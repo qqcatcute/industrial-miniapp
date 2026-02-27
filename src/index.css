@@ -1,0 +1,13 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+}
+
+/* 修复 ProLayout 在某些情况下高度塌陷的问题 */
+.ant-pro-layout {
+  min-height: 100vh;
+}

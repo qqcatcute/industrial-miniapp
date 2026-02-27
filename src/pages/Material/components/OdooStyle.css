@@ -1,0 +1,33 @@
+/* src/pages/Material/components/OdooStyle.css */
+
+.odoo-minimal-table .ant-table-wrapper .ant-table {
+  background: transparent;
+}
+
+/* 💡 修复透字：表头必须是实色白底 */
+.odoo-minimal-table .ant-table-thead>tr>th {
+  background-color: #fff !important;
+  border-bottom: 2px solid #e8e8e8 !important;
+  color: #888;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* 💡 修复透字：单元格也必须是实色白底，防止固定列透明滑动重叠 */
+.odoo-minimal-table .ant-table-tbody>tr>td {
+  background-color: #fff !important;
+  border-bottom: 1px solid #f0f0f0 !important;
+  font-size: 13px;
+  padding: 12px 16px !important;
+}
+
+/* 💡 Odoo 细节：为固定列左边缘添加一条极淡的阴影隔断线，提升层次感 */
+.odoo-minimal-table .ant-table-cell-fix-right-first::after {
+  box-shadow: inset -10px 0 8px -8px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* 去除外边框 */
+.odoo-minimal-table .ant-table-container {
+  border-inline: none !important;
+}

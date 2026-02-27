@@ -1,0 +1,17 @@
+/* src/pages/Device/components/OdooTable.css */
+.odoo-style-table .ant-table-thead>tr>th {
+  background-color: #ffffff !important;
+  color: #333333 !important;
+  font-weight: 600 !important;
+  border-bottom: 2px solid #e8e8e8 !important;
+  padding: 12px 8px !important;
+}
+
+.odoo-style-table .ant-table-thead>tr>th::before {
+  display: none !important;
+}
+
+.odoo-style-table .ant-table-tbody>tr>td {
+  border-bottom: 1px solid #f0f0f0 !important;
+  padding: 10px 8px !important;
+}
