@@ -149,7 +149,7 @@ const BasicLayout: React.FC = () => {
               </div>,
               
               <div key="notify" style={{ padding: '0 12px', cursor: 'pointer', borderLeft: '1px solid #f0f0f0' }}>
-                 <Badge count={5} size="small" offset={[2, -2]}>
+                  <Badge count={5} size="small" offset={[2, -2]}>
                    <BellOutlined style={{ fontSize: 16, color: '#555' }} />
                  </Badge>
               </div>,

@@ -1,13 +1,17 @@
+// src/pages/Device/components/DeviceTable.tsx
 import React, { useEffect, useState } from 'react';
-import { ProTable, ActionType, ProColumns } from '@ant-design/pro-components';
-import { Tag, Popconfirm, Table, Badge, Spin, Descriptions } from 'antd'; // 🚀 引入了 Spin 和 Descriptions
+import { ProTable, ActionType, ProColumns, ModalForm, ProFormText, ProFormDigit } from '@ant-design/pro-components';
+import { Tag, Popconfirm, Table, Badge, Spin, Descriptions, Button, message, Space } from 'antd'; 
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { TableRowSelection } from 'antd/es/table/interface';
 import { Device, SparePart } from '../typing';
-import { getDevices, getDeviceDetail } from '../service'; // 🚀 引入获取详情的 API
+// 🚀 引入我们刚刚在 service 里写好的备件全套独立接口
+import { getDevices, queryDevices,getDeviceDetail, getDeviceSpareParts, addDeviceSparePart, updateDeviceSparePart, deleteDeviceSpareParts, deleteDevices } from '../service'; 
 import './OdooTable.css';
 
 interface DeviceTableProps {
   selectedLabelId: string;
+  keyword?: string; // 🚀 新增
   actionRef: React.MutableRefObject<ActionType | undefined>;
   onEdit?: (record: Device) => void;
   rowSelection?: TableRowSelection<Device>; 
@@ -24,13 +28,17 @@ const STATUS_MAP: Record<string, { text: string; color: string }> = {
 };
 
 // ==========================================
-// 🚀 核心新增：独立的异步展开子组件
+// 🚀 核心重构：内嵌的设备详情与备件 CRUD 管理台
 // ==========================================
 const ExpandedDetail: React.FC<{ deviceId: string }> = ({ deviceId }) => {
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<Device | null>(null);
+  
+  // 备品备件状态与数据
+  const [spareParts, setSpareParts] = useState<SparePart[]>([]);
+  const [spLoading, setSpLoading] = useState(false);
 
-  // 组件挂载时，去拉取这台设备的完整详情
+  // 获取基础详情
   useEffect(() => {
     const fetchDetail = async () => {
       setLoading(true);
@@ -44,6 +52,21 @@ const ExpandedDetail: React.FC<{ deviceId: string }> = ({ deviceId }) => {
     fetchDetail();
   }, [deviceId]);
 
+  // 🚀 获取该设备下挂载的备品备件列表
+  const fetchSpareParts = async () => {
+    setSpLoading(true);
+    try {
+      const res = await getDeviceSpareParts(deviceId);
+      setSpareParts(res.data);
+    } finally {
+      setSpLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSpareParts();
+  }, [deviceId]);
+
   if (loading) {
     return <div style={{ padding: '32px 0', textAlign: 'center' }}><Spin tip="正在拉取设备完整档案..." /></div>;
   }
@@ -52,18 +75,16 @@ const ExpandedDetail: React.FC<{ deviceId: string }> = ({ deviceId }) => {
     return <div style={{ padding: 24, textAlign: 'center', color: '#999' }}>档案加载失败</div>;
   }
 
-  // 尝试解析后端恶心的 JSON 字符串为对象，以便优美展示
   let paramsObj: Record<string, string> = {};
   if (detail.deviceParameter) {
     try {
       let parsed = JSON.parse(detail.deviceParameter);
       if (Array.isArray(parsed) && parsed.length > 0) parsed = parsed[0];
       paramsObj = parsed;
-    } catch {
-      // 解析失败则留空
-    }
+    } catch { }
   }
 
+  // 备件表格的列定义
   const spareColumns = [
     { title: '备件名称', dataIndex: 'sparePartName', key: 'sparePartName' },
     { title: '品牌', dataIndex: 'sparePartBrand', key: 'sparePartBrand' },
@@ -78,18 +99,60 @@ const ExpandedDetail: React.FC<{ deviceId: string }> = ({ deviceId }) => {
         </span>
       ) 
     },
+    {
+      title: '操作',
+      key: 'action',
+      width: 120,
+      render: (_: unknown, sp: SparePart) => (
+        <Space size="middle">
+          {/* 修改备件 ModalForm */}
+          <ModalForm<SparePart>
+            title="编辑备品备件"
+            trigger={<a style={{ color: '#1677ff' }}><EditOutlined /></a>}
+            initialValues={sp}
+            modalProps={{ destroyOnClose: true }}
+            onFinish={async (values) => {
+              const success = await updateDeviceSparePart(sp.id, values);
+              if (success) {
+                message.success('更新成功');
+                fetchSpareParts();
+                return true;
+              }
+              return false;
+            }}
+          >
+            <ProFormText name="sparePartName" label="备件名称" rules={[{ required: true }]} />
+            <ProFormText name="sparePartBrand" label="品牌" />
+            <ProFormText name="sparePartSpecificationModel" label="规格型号" />
+            <ProFormDigit name="sparePartQuantity" label="数量" rules={[{ required: true }]} />
+            <ProFormText name="sparePartUnit" label="单位" rules={[{ required: true }]} />
+          </ModalForm>
+
+          <Popconfirm 
+            title="确认删除该备件？" 
+            onConfirm={async () => {
+              const success = await deleteDeviceSpareParts([sp.id]);
+              if (success) {
+                message.success('删除成功');
+                fetchSpareParts();
+              }
+            }}
+          >
+            <a style={{ color: '#ff4d4f' }}><DeleteOutlined /></a>
+          </Popconfirm>
+        </Space>
+      )
+    }
   ];
 
   return (
     <div style={{ padding: '16px 24px', background: '#fafbfc', border: '1px solid #f0f0f0', borderRadius: 4, margin: '8px 16px' }}>
-      {/* 1. 优美的基础与扩展信息面板 */}
+      {/* 1. 基础与扩展信息面板 */}
       <Descriptions title="📄 设备详细档案" size="small" column={3} bordered style={{ marginBottom: 24 }}>
         <Descriptions.Item label="生产厂家">{detail.deviceManufacturer || '--'}</Descriptions.Item>
         <Descriptions.Item label="出厂日期">{detail.deviceManufactureDate || '--'}</Descriptions.Item>
         <Descriptions.Item label="设计使用年限">{detail.deviceLifespan ? `${detail.deviceLifespan} 年` : '--'}</Descriptions.Item>
         <Descriptions.Item label="设备描述" span={3}>{detail.deviceDescription || '--'}</Descriptions.Item>
-        
-        {/* 动态渲染所有的 JSON 扩展技术参数 */}
         {Object.entries(paramsObj).map(([key, value]) => (
           <Descriptions.Item label={key} key={key}>
             <span style={{ color: '#1677ff', fontWeight: 500 }}>{String(value)}</span>
@@ -97,30 +160,52 @@ const ExpandedDetail: React.FC<{ deviceId: string }> = ({ deviceId }) => {
         ))}
       </Descriptions>
 
-      {/* 2. 原来的备品备件清单 */}
-      <div style={{ marginBottom: 8, fontWeight: 600, color: '#555' }}>📦 适用的备品备件清单：</div>
-      {(!detail.spareParts || detail.spareParts.length === 0) ? (
-        <div style={{ color: '#999', padding: '8px 0' }}>暂未配置关联备件，请在编辑中添加。</div>
-      ) : (
-        <Table 
-          columns={spareColumns} 
-          dataSource={detail.spareParts} 
-          rowKey="id"
-          pagination={false} 
-          size="small" 
-          bordered={true}
-          style={{ width: '80%' }}
-        />
-      )}
+      {/* 2. 🚀 独立的备品备件管理区 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, width: '80%' }}>
+        <span style={{ fontWeight: 600, color: '#555' }}>📦 专属备品备件清单：</span>
+        
+        {/* 新增备件 ModalForm */}
+        <ModalForm<SparePart>
+          title="新增备品备件"
+          trigger={<Button type="dashed" size="small" icon={<PlusOutlined />}>添加备件</Button>}
+          modalProps={{ destroyOnClose: true }}
+          onFinish={async (values) => {
+            const success = await addDeviceSparePart(deviceId, values);
+            if (success) {
+              message.success('添加成功');
+              fetchSpareParts(); // 自动刷新列表
+              return true;
+            }
+            return false;
+          }}
+        >
+          <ProFormText name="sparePartName" label="备件名称" placeholder="例如：精密轴承" rules={[{ required: true }]} />
+          <ProFormText name="sparePartBrand" label="品牌" placeholder="例如：NSK" />
+          <ProFormText name="sparePartSpecificationModel" label="规格型号" placeholder="例如：7014C" />
+          <ProFormDigit name="sparePartQuantity" label="初始数量" placeholder="输入数量" rules={[{ required: true }]} />
+          <ProFormText name="sparePartUnit" label="单位" placeholder="例如：套、件" rules={[{ required: true }]} />
+        </ModalForm>
+      </div>
+
+      <Table 
+        loading={spLoading}
+        columns={spareColumns} 
+        dataSource={spareParts} 
+        rowKey="id"
+        pagination={false} 
+        size="small" 
+        bordered={true}
+        style={{ width: '80%' }}
+        locale={{ emptyText: '暂无关联的备件数据' }}
+      />
     </div>
   );
 };
 
-
 // ==========================================
 // 主表格组件
 // ==========================================
-const DeviceTable: React.FC<DeviceTableProps> = ({ selectedLabelId, actionRef, onEdit, rowSelection }) => {
+const DeviceTable: React.FC<DeviceTableProps> = ({ selectedLabelId, keyword,actionRef, onEdit, rowSelection }) => {
   const columns: ProColumns<Device>[] = [
     { title: '设备编码', dataIndex: 'deviceId', width: 140, copyable: true, fixed: 'left' },
     { title: '设备名称', dataIndex: 'deviceName', width: 160, ellipsis: true },
@@ -140,7 +225,18 @@ const DeviceTable: React.FC<DeviceTableProps> = ({ selectedLabelId, actionRef, o
       title: '操作', valueType: 'option', width: 140, fixed: 'right',
       render: (_, record) => [
         <a key="edit" onClick={() => onEdit && onEdit(record)}>编辑</a>,
-        <Popconfirm key="delete" title="确定删除吗？">
+        <Popconfirm 
+          key="delete" 
+          title="确定删除吗？"
+          // 🚀 核心修复：加上确认后触发的事件
+          onConfirm={async () => {
+            const success = await deleteDevices([record.deviceId]);
+            if (success) {
+              message.success('删除成功');
+              actionRef.current?.reload(); // 删完后自动刷新表格
+            }
+          }}
+        >
           <a style={{ color: '#ff4d4f' }}>删除</a>
         </Popconfirm>,
       ],
@@ -154,8 +250,19 @@ const DeviceTable: React.FC<DeviceTableProps> = ({ selectedLabelId, actionRef, o
         columns={columns}
         actionRef={actionRef}
         cardBordered={false}
-        params={{ labelId: selectedLabelId === 'ALL' ? undefined : selectedLabelId }}
-        request={async (params) => getDevices(params)}
+        params={{ labelId: selectedLabelId === 'ALL' ? undefined : selectedLabelId, keyword }}
+        request={async (params) => {
+          // 🚀 核心判断：如果有搜索词，走 Query 接口；没有，走普通 List 接口
+          if (params.keyword) {
+            return queryDevices({ 
+              queryType: 'deviceName', // 默认按名称查，也可以根据你的下拉框调整
+              keyword: params.keyword, 
+              pageNum: params.current, 
+              pageSize: params.pageSize 
+            });
+          }
+          return getDevices(params);
+        }}
         rowKey="deviceId"
         search={false}
         options={{ setting: { listsHeight: 400 }, reload: false, density: false }}
@@ -166,7 +273,7 @@ const DeviceTable: React.FC<DeviceTableProps> = ({ selectedLabelId, actionRef, o
         size="small"
         rowSelection={rowSelection} 
         expandable={{
-          // 🚀 核心修改：使用刚才定义的异步子组件来渲染展开行
+          // 这里不变，依然挂载我们刚刚重构的超强扩展详情面板
           expandedRowRender: (record) => <ExpandedDetail deviceId={record.deviceId} />,
           rowExpandable: () => true, 
         }}

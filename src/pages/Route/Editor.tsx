@@ -31,7 +31,7 @@ const EditorCanvas: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
-  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [selectedNode, setSelectedNode] = useState<{key: string, title: string} | null>(null);
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();

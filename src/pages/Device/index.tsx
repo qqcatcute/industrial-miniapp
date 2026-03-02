@@ -2,40 +2,38 @@
 import React, { useState, useRef } from 'react';
 import { ActionType } from '@ant-design/pro-components';
 import ContentShell from '@/components/ContentShell';
-import { Button, Segmented, Radio, Space, message, Modal } from 'antd';
+import { Button, Segmented, Radio, Space, message, Popconfirm} from 'antd';
 import { PlusOutlined, DeleteOutlined, ImportOutlined, AppstoreOutlined, BarsOutlined } from '@ant-design/icons';
 
 import DeviceTree from './components/DeviceTree';
 import DeviceTable from './components/DeviceTable';
 import DeviceDrawer from './components/DeviceDrawer';
-import DeviceKanban from './components/DeviceKanban'; // 🚀 引入我们刚写的看板组件
+import DeviceKanban from './components/DeviceKanban'; 
 import { Device } from './typing';
-import { getDeviceDetail, addDevice, updateDevice,bindDeviceLabel,deleteDevices } from './service'; // 🚀 引入新的API
+// 🚀 引入了 unbindDeviceLabel
+import { getDeviceDetail, addDevice, updateDevice, bindDeviceLabel, unbindDeviceLabel, deleteDevices } from './service'; 
 
 const DeviceManage: React.FC = () => {
   const [selectedLabelId, setSelectedLabelId] = useState<string>('ALL');
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  
-  // 🚀 核心状态：控制当前是展示“列表”还是“卡片看板”
   const [viewType, setViewType] = useState<'list' | 'kanban'>('kanban');
 
-  const tableActionRef = useRef<ActionType | undefined>(undefined); 
+  // 🚀 新增：存储搜索框的关键字
+  const [keyword, setKeyword] = useState<string>('');
 
-  // 1. 新增一个状态，存当前点击的行数据
+  const tableActionRef = useRef<ActionType | undefined>(undefined); 
   const [currentRow, setCurrentRow] = useState<Device | undefined>(undefined);
 
   const handleSubmit = async (values: Device) => {
     let success = false;
-    // 尝试获取当前 ID (如果有 deviceId 说明是编辑模式)
     let currentDeviceId = values.deviceId; 
+    const isEditMode = !!currentDeviceId; // 判断是新增还是编辑
 
-    if (currentDeviceId) {
-       // 走编辑接口
+    if (isEditMode) {
         success = await updateDevice(currentDeviceId, values);
     } else {
-       // 走新增接口，并拿到师兄刚刚加的那个新生成的 deviceId！
-          const newId = await addDevice(values);
+        const newId = await addDevice(values);
         if (newId) {
           currentDeviceId = newId;
           success = true;
@@ -43,16 +41,25 @@ const DeviceManage: React.FC = () => {
     }
 
     if (success && currentDeviceId) {
-      // 🚀 核心逻辑：拿到新 ID 后，默默触发循环绑定标签
-      if (values.labelIds && values.labelIds.length > 0) {
-        // 遍历所有选中的标签 ID，依次发送绑定请求
-        for (const labelId of values.labelIds) {
-          await bindDeviceLabel(currentDeviceId, labelId);
-        }
-      }
+      // 🚀 核心逻辑：智能对比并处理 Bind / Unbind
+      const newLabelIds = values.labelIds || [];
+      // 如果是编辑模式，获取它原本绑定的旧标签 (如果 currentRow 没记录，默认为空数组)
+      const oldLabelIds = isEditMode ? (currentRow?.labelIds || []) : [];
+
+      // 1. 找出需要【新增绑定】的标签 (新的有，旧的没有)
+      const toBind = newLabelIds.filter(id => !oldLabelIds.includes(id));
+      // 2. 找出需要【解除绑定】的标签 (旧的有，新的没有)
+      const toUnbind = oldLabelIds.filter(id => !newLabelIds.includes(id));
+
+      // 并发执行绑定和解绑请求
+      const promises: Promise<any>[] = [];
+      toBind.forEach(labelId => promises.push(bindDeviceLabel(currentDeviceId, labelId)));
+      toUnbind.forEach(labelId => promises.push(unbindDeviceLabel(currentDeviceId, labelId)));
+      
+      await Promise.all(promises);
 
       setDrawerVisible(false);
-      tableActionRef.current?.reload(); // 刷新表格
+      tableActionRef.current?.reload(); 
       return true;
     }
     return false;
@@ -67,9 +74,13 @@ const DeviceManage: React.FC = () => {
           <Segmented options={['全部状态', '运行中', '维修中']} defaultValue="全部状态"/>
         </Space>
       }
-      searchPlaceholder="输入设备编码/名称搜索..."
+      searchPlaceholder="输入设备名称模糊搜索..."
+      // 🚀 假设你的 ContentShell 支持 onSearch 回调，将关键字存入状态并刷新表格
+      onSearch={(val) => {
+        setKeyword(val);
+        tableActionRef.current?.reload();
+      }}
       actions={[
-        // 🚀 Odoo 风格的视图切换器
         <Radio.Group 
           key="view-switch" 
           value={viewType} 
@@ -82,39 +93,41 @@ const DeviceManage: React.FC = () => {
         </Radio.Group>,
 
         <Button key="import" icon={<ImportOutlined />} style={{ borderRadius: 2 }}>导入</Button>,
-// 2. 修改“新建设备”按钮的点击事件，确保新建时是清空数据的
-  <Button 
-    key="add" type="primary" icon={<PlusOutlined />} 
-    onClick={() => {
-      setCurrentRow(undefined); // 确保是空数据
-      setDrawerVisible(true);
-    }}
-  >
-    新建设备
-  </Button>,
         <Button 
-          key="del" 
-          danger 
-          icon={<DeleteOutlined />} 
-          style={{ borderRadius: 2 }}
-          disabled={selectedRowKeys.length === 0} // 没勾选时禁用
+          key="add" type="primary" icon={<PlusOutlined />} 
           onClick={() => {
-            Modal.confirm({
-              title: '确认批量删除',
-              content: `您确定要删除选中的 ${selectedRowKeys.length} 台设备吗？`,
-              onOk: async () => {
-                const success = await deleteDevices(selectedRowKeys as string[]);
-                if (success) {
-                  message.success('批量删除成功');
-                  setSelectedRowKeys([]); // 清空勾选
-                  tableActionRef.current?.reload(); // 刷新表格
-                }
-              }
-            });
+            setCurrentRow(undefined); 
+            setDrawerVisible(true);
           }}
         >
-          批量删除
+          新建设备
         </Button>,
+        <Popconfirm 
+          key="del" 
+          title="确认批量删除"
+          description={`您确定要删除选中的 ${selectedRowKeys.length} 台设备吗？`}
+          disabled={selectedRowKeys.length === 0}
+          onConfirm={async () => {
+            // 🚀 加上这行打印，让你清清楚楚看到传给后端的 ID 数组！
+            console.log("准备发送批量删除请求，勾选的 ID 数组为:", selectedRowKeys); 
+            
+            const success = await deleteDevices(selectedRowKeys as string[]);
+            if (success) {
+              message.success('批量删除成功');
+              setSelectedRowKeys([]); // 清空勾选
+              tableActionRef.current?.reload(); // 刷新表格
+            }
+          }}
+        >
+          <Button 
+            danger 
+            icon={<DeleteOutlined />} 
+            style={{ borderRadius: 2 }} 
+            disabled={selectedRowKeys.length === 0} 
+          >
+            批量删除
+          </Button>
+        </Popconfirm>,,
       ]}
     >
       <div style={{ display: 'flex', height: '100%', background: '#fff', border: '1px solid #d9d9d9', borderRadius: 2 }}>
@@ -122,36 +135,35 @@ const DeviceManage: React.FC = () => {
           <DeviceTree onSelect={setSelectedLabelId} />
         </div>
         
- {/* 3. 把当前行数据传给抽屉，并把设置状态的函数传给表格 */}
-      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-    {viewType === 'list' ? (
-        <DeviceTable 
-          selectedLabelId={selectedLabelId} 
-          actionRef={tableActionRef} 
-          onEdit={async (record) => {
-            const fullDetail = await getDeviceDetail(record.deviceId);
-            setCurrentRow(fullDetail);
-            setDrawerVisible(true);
-          }}
-          // 🚀 重点：把 onChange 传给 Table，收集勾选的 ID
-          rowSelection={{
-            selectedRowKeys,
-            onChange: (newSelectedRowKeys: React.Key[]) => setSelectedRowKeys(newSelectedRowKeys),
-          }}
-        />
-    ) : (
-        <DeviceKanban selectedLabelId={selectedLabelId} />
-    )}
-  </div>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {viewType === 'list' ? (
+              <DeviceTable 
+                selectedLabelId={selectedLabelId} 
+                keyword={keyword} // 🚀 传给 Table
+                actionRef={tableActionRef} 
+                onEdit={async (record) => {
+                  const fullDetail = await getDeviceDetail(record.deviceId);
+                  setCurrentRow(fullDetail);
+                  setDrawerVisible(true);
+                }}
+                rowSelection={{
+                  selectedRowKeys,
+                  onChange: (newSelectedRowKeys: React.Key[]) => setSelectedRowKeys(newSelectedRowKeys),
+                }}
+              />
+          ) : (
+              // Kanban 也应该支持 keyword，如有需要也可传入并修改内部请求
+              <DeviceKanban selectedLabelId={selectedLabelId} /> 
+          )}
+        </div>
       </div>
 
-// 4. 给抽屉加上 initialValues 属性
-  <DeviceDrawer 
-    visible={drawerVisible} 
-    onVisibleChange={setDrawerVisible}
-    initialValues={currentRow}  // 🚀 把当前点击的行数据传给抽屉做回显
-    onSubmit={handleSubmit}
-  />
+      <DeviceDrawer 
+        visible={drawerVisible} 
+        onVisibleChange={setDrawerVisible}
+        initialValues={currentRow}  
+        onSubmit={handleSubmit}
+      />
     </ContentShell>
   );
 };

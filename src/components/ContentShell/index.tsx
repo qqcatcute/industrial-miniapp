@@ -32,6 +32,7 @@ const ContentShell: React.FC<ContentShellProps> = ({
   title,
   actions,
   searchPlaceholder = "在此页面搜索...",
+  onSearch,
   children,
 }) => {
   const navigate = useNavigate();
@@ -103,11 +104,14 @@ const ContentShell: React.FC<ContentShellProps> = ({
         </div>
 
         {/* 右侧：搜索 + 按钮组 */}
+{/* 右侧：搜索 + 按钮组 */}
         <Space size={16}>
-          {/* 搜索框 */}
-          <Input 
+          {/* 🚀 修复：改成 Input.Search，并加上 onSearch={onSearch} */}
+          <Input.Search 
              prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
              placeholder={searchPlaceholder} 
+             onSearch={onSearch} // 👈 这一行最关键！没有它就不会触发网络请求
+             enterButton={false} // 保持你原有的极简风格，不显示蓝色的搜索大按钮
              style={{ width: 240, borderRadius: 0 }} 
           />
           

@@ -1,15 +1,14 @@
 // src/utils/request.ts
 import axios from 'axios';
 import { message } from 'antd';
-// 🚀 引入我们准备好的 Mock 数据
-import { mockDeviceList, mockDeviceDetail } from '@/mock/device.mock'; 
 
 const request = axios.create({
+  // 🚀 配合相对路径，统一挂载基础前缀
   baseURL: '/api/v1',
   timeout: 5000,
 });
 
-// 请求拦截器不变
+// 请求拦截器：自动携带 Token
 request.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('authorization');
@@ -30,47 +29,25 @@ request.interceptors.response.use(
       message.error(res.msg || '操作失败');
       return Promise.reject(new Error(res.msg || 'Error'));
     }
+    // 直接返回剥离了 code/msg 后的真实 data
     return res;
   },
   (error) => {
     const { config, response } = error;
 
-    // 【核心增强】后端未启动时的分发处理
-    if (!response || response.status === 404 || response.status >= 500) {
-      console.warn(`检测到后端未上线，正拦截接口: ${config.url}`);
-      
-      // 1. 如果是登录相关的接口，按你之前的逻辑返回假 Token
-      if (config.url.includes('/login') || config.url.includes('/register')) {
-        return Promise.resolve({
-          code: 1,
-          msg: '登录模式放行',
-          data: 'mock-token-123456789'
-        });
-      }
-
-      // 2. 如果是设备列表接口，返回我们定义的列表 Mock
-      if (config.url.includes('/api/device/list')) {
-        return Promise.resolve(mockDeviceList);
-      }
-
-      // 3. 如果是设备详情接口，返回详情 Mock
-      if (config.url.includes('/api/device/detail')) {
-        return Promise.resolve(mockDeviceDetail);
-      }
-
-      // 4. 其他接口通用的空白兜底
-      return Promise.resolve({
-        code: 1,
-        msg: '通用放行',
-        data: []
-      });
-    }
-
-    // 401 踢回登录页逻辑保留
+    // 1. 401 踢回登录页逻辑保留
     if (response?.status === 401) {
       message.error('登录已失效，请重新登录');
       localStorage.removeItem('authorization');
       window.location.href = '/login';
+      return Promise.reject(error);
+    }
+
+    // 2. 【核心改造】后端未启动、网关报错或 404/5xx 时的柔性降级分发
+    if (!response || response.status === 404 || response.status >= 500) {
+      console.warn(`[网络拦截] 检测到后端接口异常，正交由 Service 层触发柔性降级: ${config?.url}`);
+      // 🚀 不再全局返回假数据，直接向外抛出错误！让具体的 service 接口去 catch
+      return Promise.reject(error); 
     }
 
     return Promise.reject(error);
