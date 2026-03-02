@@ -1,8 +1,7 @@
-// src/pages/Device/typing.ts
-import type { UploadFile } from 'antd'; // 引入 Antd 的标准文件类型
+import type { UploadFile } from 'antd';
 
 export interface SparePart {
-  id: string;
+  id: string; // 纯前端Mock，保持原样
   sparePartName: string;
   sparePartBrand?: string;
   sparePartSpecificationModel?: string;
@@ -11,38 +10,35 @@ export interface SparePart {
 }
 
 export interface Device {
-  id: string;
+  deviceId: string; // 🚀 对齐后端主键
   deviceName: string;
-  deviceManufacturer: string;
-  deviceBrand: string;
-  deviceSpecificationModel: string;
-  deviceSupplier: string;
-  deviceManufactureDate: string;
-  deviceServiceLife: number;
-  deviceDepreciation: string;
-  deviceLocation: string;
+  deviceManufacturer?: string;
+  deviceBrand?: string;
+  deviceSpecificationModel?: string;
+  deviceSupplier?: string;
+  deviceManufactureDate?: string;
+  deviceLifespan?: number; // 🚀 对齐后端使用年限
+  deviceDepreciation?: string;
+  deviceLocation?: string;
   deviceDescription?: string;
-  deviceStatus: string;
-  // 🚀 后端要求的简单键值对 JSON 对象
-  deviceParameter?: Record<string, string>;
+  deviceStatus: string; 
   
+  // 🚀 后端要求：无嵌套键值对 JSON 字符串
+  deviceParameter?: string; 
+  
+  // -- 以下为前端 Mock 补充或 UI 专属状态 --
   spareParts?: SparePart[];
   sparePartIds?: string[];
-
-  // 🚀 补齐与后端完全一致的“分类标签”关联字段
-  labels?: { id: string; deviceLabelName: string }[]; 
+  labels?: { labelId: string; labelName: string }[]; 
   labelIds?: string[]; 
-
-  // 🚀 补齐与后端完全一致的手册 URL 字段
   deviceManualUrl?: string; 
-  // (前端 Antd Upload 组件专用的状态，不上报给后端)
   deviceManual?: UploadFile[]; 
 }
 
 export interface DeviceLabel {
-  id: string;
-  deviceLabelName: string;
-  deviceLabelParent: string | 'NULL';
+  labelId: string; // 🚀 对齐后端标签主键
+  labelName: string; // 🚀 对齐后端标签名称
+  labelParentId: string | 'root';
   deviceLabelHierarchical: number;
   children?: DeviceLabel[];
 }

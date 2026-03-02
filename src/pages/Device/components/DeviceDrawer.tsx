@@ -21,7 +21,7 @@ type FormValues = Device & {
 };
 
 const DeviceDrawer: React.FC<DeviceDrawerProps> = ({ visible, onVisibleChange, initialValues, onSubmit }) => {
-  const isEdit = !!initialValues?.id;
+  const isEdit = !!initialValues?.deviceId;
 
   // 🚀 核心修复 2：使用标准注释忽略这里的 any 报错，因为 Upload 事件本身的底层类型极度复杂
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,13 +32,19 @@ const DeviceDrawer: React.FC<DeviceDrawerProps> = ({ visible, onVisibleChange, i
 
   const processInitialParameters = () => {
     if (!initialValues?.deviceParameter) return [];
-    
-    return Object.entries(initialValues.deviceParameter).map(([name, fullValue]) => {
-      const parts = fullValue.trim().split(' ');
-      const value = parts[0];
-      const unit = parts.length > 1 ? parts.slice(1).join(' ') : ''; 
-      return { name, value, unit };
-    });
+    try {
+      // 兼容后端发疯返回 "[{\"x\":\"y\"}]" 或 "{\"x\":\"y\"}"
+      let parsed = JSON.parse(initialValues.deviceParameter);
+      if (Array.isArray(parsed) && parsed.length > 0) parsed = parsed[0];
+      
+      return Object.entries(parsed).map(([name, fullValue]) => {
+        const strVal = String(fullValue);
+        const parts = strVal.trim().split(' ');
+        const value = parts[0];
+        const unit = parts.length > 1 ? parts.slice(1).join(' ') : ''; 
+        return { name, value, unit };
+      });
+    } catch{ return []; }
   };
 
   const formInitialValues = {
@@ -63,32 +69,42 @@ const DeviceDrawer: React.FC<DeviceDrawerProps> = ({ visible, onVisibleChange, i
       submitter={{ searchConfig: { submitText: '保存', resetText: '取消' }, submitButtonProps: { style: { borderRadius: 2 } }, resetButtonProps: { style: { borderRadius: 2 } } }}
       onFinish={async (values) => {
         const finalParams: Record<string, string> = {};
-        
         values.deviceParameterList?.forEach((item) => {
           if (item.name && item.value) {
-            const combinedValue = item.unit ? `${item.value} ${item.unit}` : item.value;
-            finalParams[item.name] = combinedValue;
+            finalParams[item.name] = item.unit ? `${item.value} ${item.unit}` : item.value;
           }
         });
 
-        // 🚀 核心修复 3：正确使用类型断言，消灭 delete (submitData as any) 的报错
+        // 🚀 1. 构造一个纯净的提交对象
         const submitData: Partial<FormValues> = {
           ...values,
-          deviceParameter: finalParams 
+          deviceParameter: JSON.stringify(finalParams)
         };
-        delete submitData.deviceParameterList;
 
-        const success = await onSubmit(submitData as Device);
-        if (success) { message.success(`${isEdit ? '编辑' : '新建'}设备成功`); return true; }
+        // 🚀 2. 暴力删除后端不需要（或不认识）的额外前端字段
+        delete submitData.deviceParameterList; // 现在不会报错了！
+        delete submitData.labelIds;            
+        delete submitData.sparePartIds;
+
+        // 把原始的 labelIds 等字段通过另一条路传给外层（为了后续的 bind 操作）
+        // 这里把清理过的 submitData 传给外层
+        const success = await onSubmit({
+            ...submitData,
+           // 为了让外层的 handleSubmit 还能拿到 labelIds 去做循环绑定，我们偷偷塞回去
+           // 但要确保 axios 拦截器或 service 层不会把它们发送给后端的 create 接口
+            labelIds: values.labelIds, 
+            sparePartIds: values.sparePartIds 
+        } as Device);
+
+        if (success) { message.success('操作成功'); return true; }
         return false;
       }}
-      grid={true} rowProps={{ gutter: [32, 16] }}
     >
       {/* ================= 模块一：基础档案 ================= */}
       <Divider orientation="left" style={{ marginTop: 0, marginBottom: 16, borderColor: '#e8e8e8' }}>
         <span style={{ fontSize: 16, fontWeight: 600, color: '#001529' }}>基础档案</span>
       </Divider>
-      <ProFormText name="id" label="设备编码" colProps={{ span: 12 }} rules={[{ required: true }]} disabled={isEdit} />
+      <ProFormText name="deviceId" label="设备编码" colProps={{ span: 12 }} rules={[{ required: true }]} disabled={isEdit} />
       <ProFormText name="deviceName" label="设备名称" colProps={{ span: 12 }} rules={[{ required: true }]} />
       <ProFormSelect name="deviceDepreciation" label="折旧方式" colProps={{ span: 12 }} rules={[{ required: true }]} options={[{ label: '年限平均法', value: '年限平均法' }, { label: '工作量法', value: '工作量法' }, { label: '双倍余额递减法', value: '双倍余额递减法' }, { label: '不计提折旧', value: '不计提折旧' }]} />
       <ProFormSelect name="deviceStatus" label="设备状态" colProps={{ span: 12 }} rules={[{ required: true }]} options={[{ label: '规划中', value: '规划中' }, { label: '安装调试', value: '安装调试' }, { label: '运行中', value: '运行中' }, { label: '闲置', value: '闲置' }]} />
@@ -108,7 +124,7 @@ const DeviceDrawer: React.FC<DeviceDrawerProps> = ({ visible, onVisibleChange, i
     treeCheckable: true, // 开启多选（多对多关系）
     showCheckedStrategy: 'SHOW_ALL',
     placeholder: '请选择该设备所属的分类（可多选）',
-    fieldNames: { label: 'deviceLabelName', value: 'id' } // 映射后端树的字段名
+    fieldNames: { label: 'labelName', value: 'labelId' } // 映射后端树的字段名
   }}
   rules={[{ required: true, message: '必须为设备选择至少一个分类！' }]}
 />
@@ -145,17 +161,7 @@ const DeviceDrawer: React.FC<DeviceDrawerProps> = ({ visible, onVisibleChange, i
         <span style={{ fontSize: 16, fontWeight: 600, color: '#001529' }}>其他信息</span>
       </Divider>
       <ProFormTextArea name="deviceDescription" label="设备描述 / 备注" colProps={{ span: 24 }} fieldProps={{ rows: 3 }} />
-      
-      {/* 🚀 核心修复 4：使用 @ts-expect-error 合法地欺骗 TS 编译器，告诉它我们明确知道这里运行时支持 colProps */}
-      {/* @ts-expect-error ProFormItem 在底层的类型定义中漏掉了 colProps，但运行时生效，故忽略此报错 */}
-      <ProFormItem name="deviceManual" label="设备手册 (仅限 PDF, 最大 500MB)" colProps={{ span: 24 }} valuePropName="fileList" getValueFromEvent={normFile}>
-        <Upload accept=".pdf" maxCount={1} beforeUpload={(file) => {
-            if (file.size / 1024 / 1024 > 500) { message.error('文件必须小于 500MB!'); return Upload.LIST_IGNORE; }
-            return false; 
-          }}>
-          <Button icon={<UploadOutlined />} style={{ borderRadius: 2 }}>点击上传 PDF 文件</Button>
-        </Upload>
-      </ProFormItem>
+
     </DrawerForm>
   );
 };

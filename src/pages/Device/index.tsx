@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { ActionType } from '@ant-design/pro-components';
 import ContentShell from '@/components/ContentShell';
-import { Button, Segmented, Radio, Space } from 'antd';
+import { Button, Segmented, Radio, Space, message, Modal } from 'antd';
 import { PlusOutlined, DeleteOutlined, ImportOutlined, AppstoreOutlined, BarsOutlined } from '@ant-design/icons';
 
 import DeviceTree from './components/DeviceTree';
@@ -10,11 +10,12 @@ import DeviceTable from './components/DeviceTable';
 import DeviceDrawer from './components/DeviceDrawer';
 import DeviceKanban from './components/DeviceKanban'; // 🚀 引入我们刚写的看板组件
 import { Device } from './typing';
-import { addDevice } from './service';
+import { getDeviceDetail, addDevice, updateDevice,bindDeviceLabel,deleteDevices } from './service'; // 🚀 引入新的API
 
 const DeviceManage: React.FC = () => {
   const [selectedLabelId, setSelectedLabelId] = useState<string>('ALL');
   const [drawerVisible, setDrawerVisible] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   
   // 🚀 核心状态：控制当前是展示“列表”还是“卡片看板”
   const [viewType, setViewType] = useState<'list' | 'kanban'>('kanban');
@@ -25,11 +26,33 @@ const DeviceManage: React.FC = () => {
   const [currentRow, setCurrentRow] = useState<Device | undefined>(undefined);
 
   const handleSubmit = async (values: Device) => {
-    const success = await addDevice(values);
-    if (success) {
+    let success = false;
+    // 尝试获取当前 ID (如果有 deviceId 说明是编辑模式)
+    let currentDeviceId = values.deviceId; 
+
+    if (currentDeviceId) {
+       // 走编辑接口
+        success = await updateDevice(currentDeviceId, values);
+    } else {
+       // 走新增接口，并拿到师兄刚刚加的那个新生成的 deviceId！
+          const newId = await addDevice(values);
+        if (newId) {
+          currentDeviceId = newId;
+          success = true;
+        }
+    }
+
+    if (success && currentDeviceId) {
+      // 🚀 核心逻辑：拿到新 ID 后，默默触发循环绑定标签
+      if (values.labelIds && values.labelIds.length > 0) {
+        // 遍历所有选中的标签 ID，依次发送绑定请求
+        for (const labelId of values.labelIds) {
+          await bindDeviceLabel(currentDeviceId, labelId);
+        }
+      }
+
       setDrawerVisible(false);
-      // 提交成功后，尝试刷新表格（如果当前在表格视图）
-      tableActionRef.current?.reload(); 
+      tableActionRef.current?.reload(); // 刷新表格
       return true;
     }
     return false;
@@ -69,7 +92,29 @@ const DeviceManage: React.FC = () => {
   >
     新建设备
   </Button>,
-        <Button key="del" danger icon={<DeleteOutlined />} style={{ borderRadius: 2 }}>批量删除</Button>,
+        <Button 
+          key="del" 
+          danger 
+          icon={<DeleteOutlined />} 
+          style={{ borderRadius: 2 }}
+          disabled={selectedRowKeys.length === 0} // 没勾选时禁用
+          onClick={() => {
+            Modal.confirm({
+              title: '确认批量删除',
+              content: `您确定要删除选中的 ${selectedRowKeys.length} 台设备吗？`,
+              onOk: async () => {
+                const success = await deleteDevices(selectedRowKeys as string[]);
+                if (success) {
+                  message.success('批量删除成功');
+                  setSelectedRowKeys([]); // 清空勾选
+                  tableActionRef.current?.reload(); // 刷新表格
+                }
+              }
+            });
+          }}
+        >
+          批量删除
+        </Button>,
       ]}
     >
       <div style={{ display: 'flex', height: '100%', background: '#fff', border: '1px solid #d9d9d9', borderRadius: 2 }}>
@@ -83,10 +128,15 @@ const DeviceManage: React.FC = () => {
         <DeviceTable 
           selectedLabelId={selectedLabelId} 
           actionRef={tableActionRef} 
-         // 🚀 新增：把打开抽屉和传数据的方法传给表格
-            onEdit={(record) => {
-            setCurrentRow(record);
+          onEdit={async (record) => {
+            const fullDetail = await getDeviceDetail(record.deviceId);
+            setCurrentRow(fullDetail);
             setDrawerVisible(true);
+          }}
+          // 🚀 重点：把 onChange 传给 Table，收集勾选的 ID
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (newSelectedRowKeys: React.Key[]) => setSelectedRowKeys(newSelectedRowKeys),
           }}
         />
     ) : (

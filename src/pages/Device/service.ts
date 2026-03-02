@@ -1,112 +1,149 @@
-// src/pages/Device/service.ts
+import request from '@/utils/request';
 import { Device, DeviceLabel, SparePart } from './typing';
+import { mockDeviceList, mockDeviceDetail } from '@/mock/device.mock';
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// 独立的备品备件库 (模拟数据库 SparePart 表)
+// 独立的备品备件库 (前端Mock兜底)
 const mockSpareParts: SparePart[] = [
   { id: 'SP-001', sparePartName: '主轴陶瓷精密轴承', sparePartBrand: 'NSK', sparePartSpecificationModel: '7014C', sparePartQuantity: 12.0000, sparePartUnit: '套' },
-  { id: 'SP-002', sparePartName: '全合成切削液', sparePartBrand: '嘉实多 (Castrol)', sparePartSpecificationModel: 'Alusol 41 BF', sparePartQuantity: 500.0000, sparePartUnit: 'L' },
-  { id: 'SP-003', sparePartName: '红宝石测针', sparePartBrand: '雷尼绍 (Renishaw)', sparePartSpecificationModel: 'A-5000-3709', sparePartQuantity: 5.0000, sparePartUnit: '根' },
-];
-
-let mockDeviceData: Device[] = [
-  {
-    id: 'EQ-CNC-2026-001',
-    deviceName: '卧式五轴加工中心',
-    deviceManufacturer: '马扎克 (Mazak)',
-    deviceBrand: 'Mazak',
-    deviceSpecificationModel: 'HCN-6800',
-    deviceSupplier: '马扎克(中国)有限公司',
-    deviceManufactureDate: '2025-05-12',
-    deviceServiceLife: 10.0,
-    deviceDepreciation: '年限平均法',
-    deviceLocation: '第一机加车间-A区',
-    deviceStatus: '运行中',
-    deviceDescription: '用于精密中心轮零件的切削加工，需定期检查主轴轴承状态。',
-    
-    // 🚀 模拟设备手册后端的真实 URL
-    deviceManualUrl: 'https://dummyimage.com/HCN-6800_Manual.pdf',
-    
-    // 🚀 模拟分类标签的关联数据 (这台机器属于"五轴加工中心" L1-1)
-    labelIds: ['L1-1'],
-    labels: [
-      { id: 'L1-1', deviceLabelName: '五轴加工中心' }
-    ],
-
-    // 🚀 模拟 Antd 组件要求的文件列表状态回显
-    deviceManual: [
-      {
-        uid: '-1',
-        name: 'HCN-6800_操作手册.pdf',
-        status: 'done',
-        url: 'https://dummyimage.com/HCN-6800_Manual.pdf', // 点击直接预览
-      },
-    ],
-
-    deviceParameter: {
-      '主轴最高转速': '10000 rpm',
-      'X轴行程': '1050 mm'
-    },
-    spareParts: [mockSpareParts[0], mockSpareParts[1]],
-    sparePartIds: ['SP-001', 'SP-002']
-  },
-  {
-    id: 'EQ-CMM-2026-002',
-    deviceName: '高精度三坐标测量机',
-    deviceManufacturer: '海克斯康 (Hexagon)',
-    deviceBrand: 'Hexagon',
-    deviceSpecificationModel: 'GLOBAL S 09.15.08',
-    deviceSupplier: '海克斯康测量系统',
-    deviceManufactureDate: '2024-11-20',
-    deviceServiceLife: 8.0,
-    deviceDepreciation: '双倍余额递减法',
-    deviceLocation: '恒温检测室-01',
-    deviceStatus: '闲置',
-    deviceParameter: {
-      '测量范围(X/Y/Z)': '900/1500/800 mm'
-    },
-    spareParts: [mockSpareParts[2]],
-    sparePartIds: ['SP-003']
-  }
+  { id: 'SP-002', sparePartName: '全合成切削液', sparePartBrand: '嘉实多', sparePartSpecificationModel: 'Alusol 41 BF', sparePartQuantity: 500.0000, sparePartUnit: 'L' },
+  { id: 'SP-003', sparePartName: '红宝石测针', sparePartBrand: '雷尼绍', sparePartSpecificationModel: 'A-5000-3709', sparePartQuantity: 5.0000, sparePartUnit: '根' },
 ];
 
 export const getDeviceLabels = async (): Promise<DeviceLabel[]> => {
-  await delay(300);
-  return [
-    {
-      id: 'L1', deviceLabelName: '机械加工设备', deviceLabelParent: 'NULL', deviceLabelHierarchical: 0,
-      children: [
-        { id: 'L1-1', deviceLabelName: '车削中心', deviceLabelParent: 'L1', deviceLabelHierarchical: 1 },
-        { id: 'L1-2', deviceLabelName: '五轴加工中心', deviceLabelParent: 'L1', deviceLabelHierarchical: 1 },
-      ],
-    },
-    { id: 'L2', deviceLabelName: '检测与测量设备', deviceLabelParent: 'NULL', deviceLabelHierarchical: 0 }
-  ];
+  try {
+    const res = await request.get('/deviceLabel/list');
+    const list: DeviceLabel[] = res.data || [];
+    
+    // 后端返回扁平列表，前端转树
+    const map = new Map<string, DeviceLabel>();
+    const tree: DeviceLabel[] = [];
+    list.forEach(item => map.set(item.labelId, { ...item, children: [] }));
+    
+    list.forEach(item => {
+      if (!item.labelParentId || item.labelParentId === 'root' || item.labelParentId === 'NULL') {
+        tree.push(map.get(item.labelId)!);
+      } else {
+        const parent = map.get(item.labelParentId);
+        if (parent && parent.children) {
+          parent.children.push(map.get(item.labelId)!);
+        }
+      }
+    });
+    return tree.length ? tree : [{ labelId: 'ALL', labelName: '全部设备', labelParentId: 'root', deviceLabelHierarchical: 0 }];
+  } catch (error) {
+    console.warn('⚠️ 后端 /api/deviceLabel/list 接口异常，已自动切入 Mock 分类数据');
+    return [
+      {
+        labelId: 'L1', labelName: '机械加工设备', labelParentId: 'root', deviceLabelHierarchical: 0,
+        children: [
+          { labelId: 'L1-1', labelName: '车削中心', labelParentId: 'L1', deviceLabelHierarchical: 1 },
+          { labelId: 'L1-2', labelName: '五轴加工中心', labelParentId: 'L1', deviceLabelHierarchical: 1 },
+        ],
+      },
+      { labelId: 'L2', labelName: '检测与测量设备', labelParentId: 'root', deviceLabelHierarchical: 0 }
+    ];
+  }
 };
 
-export const getDevices = async (params: { labelId?: string; keyword?: string; current?: number; pageSize?: number }) => {
-  await delay(300);
-  return {
-    data: mockDeviceData,
-    total: mockDeviceData.length,
-    success: true,
-  };
+export const getDevices = async (params: { labelId?: string; current?: number; pageSize?: number }) => {
+  try {
+    const res = await request.get('/device/list', {
+      params: { pageNum: params.current || 1, pageSize: params.pageSize || 10 }
+    });
+    
+    const dataWithSpares = (res.data || []).map((device: Device, index: number) => ({
+      ...device,
+      spareParts: index % 2 === 0 ? [mockSpareParts[0], mockSpareParts[1]] : [mockSpareParts[2]]
+    }));
+
+    return { data: dataWithSpares, total: dataWithSpares.length || 100, success: true };
+  } catch (error) {
+    console.warn('⚠️ 后端 /api/device/list 接口异常，已自动切入 Mock 列表数据');
+    // 使用 device.mock.ts 里的标准数据缝合备件
+    const fallbackData = (mockDeviceList.data as Device[]).map((device, index) => ({
+      ...device,
+      spareParts: index % 2 === 0 ? [mockSpareParts[0], mockSpareParts[1]] : [mockSpareParts[2]]
+    }));
+    return { data: fallbackData, total: fallbackData.length, success: true };
+  }
+};
+
+export const getDeviceDetail = async (deviceId: string): Promise<Device> => {
+  try {
+    const res = await request.get('/device/detail', { params: { deviceId } });
+    const detail = res.data;
+    detail.spareParts = [mockSpareParts[0], mockSpareParts[1]];
+    detail.sparePartIds = ['SP-001', 'SP-002'];
+    return detail;
+  } catch (error) {
+    console.warn(`⚠️ 后端详情接口异常，返回 ${deviceId} 的 Mock 详情`);
+    const fallbackDetail = { ...mockDeviceDetail.data } as Device;
+    fallbackDetail.spareParts = [mockSpareParts[0], mockSpareParts[1]];
+    fallbackDetail.sparePartIds = ['SP-001', 'SP-002'];
+    return fallbackDetail;
+  }
 };
 
 export const getSparePartOptions = async () => {
-  await delay(200);
   return mockSpareParts.map(sp => ({
     label: `${sp.sparePartName} (${sp.sparePartBrand || '无品牌'}) - 库存: ${sp.sparePartQuantity}${sp.sparePartUnit}`,
     value: sp.id
   }));
 };
 
+// 🚀 1. 新增/修改：创建设备，并返回后端生成的真实 deviceId
 export const addDevice = async (newDevice: Device) => {
-  await delay(500); 
-  if (newDevice.sparePartIds && newDevice.sparePartIds.length > 0) {
-    newDevice.spareParts = mockSpareParts.filter(sp => newDevice.sparePartIds?.includes(sp.id));
+  try {
+    const res = await request.post('/device/create', newDevice);
+    // 根据师兄发的截图，解析出 data 里的 deviceId 返回给外层
+    return res.data?.deviceId; 
+  } catch (e) {
+    console.warn('⚠️ 后端未启动或报错，拦截新增请求并返回假 ID 兜底');
+    return `MOCK-ID-${Date.now()}`;
   }
-  mockDeviceData = [newDevice, ...mockDeviceData]; 
-  return true;
 };
+
+export const updateDevice = async (deviceId: string, updateData: Partial<Device>) => {
+  try {
+    await request.put(`/device/update/${deviceId}`, updateData);
+    return true;
+  } catch (e) {
+    console.warn('⚠️ 后端未启动，拦截编辑请求并返回成功');
+    return true;
+  }
+};
+
+export const deleteDevices = async (deviceIds: string[]) => {
+  try {
+    await request.delete('/device/delete', { data: deviceIds });
+    return true;
+  } catch (e) {
+    console.warn('⚠️ 后端未启动，拦截删除请求并返回成功');
+    return true;
+  }
+};
+
+// 绑定设备与标签 (兜底放行)
+export const bindDeviceLabel = async (deviceId: string, labelId: string) => {
+  try {
+    // 接口文档规定是 Query Params
+    await request.post(`/deviceLabel/bind?deviceId=${deviceId}&labelId=${labelId}`);
+    return true;
+  } catch (e) {
+    console.warn(`⚠️ 拦截设备 ${deviceId} 绑定标签 ${labelId} 的请求`);
+    return true;
+  }
+};
+
+// 新建设备分类标签
+export const addDeviceLabel = async (params: { deviceLabelName: string; deviceLabelParentId?: string }) => {
+  try {
+    // 根节点不传 parentId
+    await request.post('/deviceLabel/create', params);
+    return true;
+  } catch (e) {
+    console.warn('⚠️ 后端未启动，拦截新建分类请求并返回成功');
+    return true;
+  }
+};
+

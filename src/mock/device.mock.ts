@@ -10,8 +10,8 @@ export const mockDeviceList = {
       deviceName: "卧式五轴加工中心",
       deviceBrand: "Mazak",
       deviceStatus: "RUNNING",
-      deviceLocation: "1号厂房-A区", // 你让后端加的
-      deviceSpecificationModel: "HCN-6800", // 你让后端加的
+      deviceLocation: "1号厂房-A区", // 让后端加的
+      deviceSpecificationModel: "HCN-6800", // 让后端加的
     },
     {
       deviceId: "EQ-CNC-2026-002",
@@ -41,6 +41,22 @@ export const mockDeviceDetail = {
     deviceLocation: "1号厂房-A区",
     deviceStatus: "RUNNING",
     deviceParameter: '{"主轴转速":"18000rpm","进给速度":"60m/min"}', // 后端要求的JSON字符串
-    deviceDescription: "该设备用于精密行星减速器箱体的高精度加工。"
+    deviceDescription: "该设备用于精密行星减速器箱体的高精度加工。",
+    spareParts: [
+      { 
+        id: 'SP-001', 
+        sparePartName: '主轴陶瓷精密轴承', 
+        sparePartBrand: 'NSK', 
+        sparePartQuantity: 2, 
+        sparePartUnit: '套' 
+      },
+      { 
+        id: 'SP-003', 
+        sparePartName: '红宝石测针', 
+        sparePartBrand: '雷尼绍', 
+        sparePartQuantity: 1, 
+        sparePartUnit: '根' 
+      }
+    ]
   }
 };

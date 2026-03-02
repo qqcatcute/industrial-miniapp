@@ -1,32 +1,30 @@
-// src/pages/Device/components/DeviceTree.tsx
 import React, { useEffect, useState } from 'react';
-import { Tree, Input, Button, Spin } from 'antd';
-import type { DataNode } from 'antd/es/tree'; // 🚀 引入 Antd 官方的树节点类型
-import { PlusOutlined, SettingOutlined, SearchOutlined } from '@ant-design/icons';
-import { getDeviceLabels } from '../service';
-import { DeviceLabel } from '../typing'; // 🚀 引入我们自己定义的业务类型
+import { Tree, Input, Button, Spin, message } from 'antd';
+import type { DataNode } from 'antd/es/tree';
+import { SettingOutlined, SearchOutlined, PlusOutlined } from '@ant-design/icons';
+// 🚀 引入高级表单和刚刚写的 API
+import { ModalForm, ProFormText, ProFormTreeSelect } from '@ant-design/pro-components';
+import { getDeviceLabels, addDeviceLabel } from '../service';
+import { DeviceLabel } from '../typing';
 
 interface DeviceTreeProps {
   onSelect: (selectedId: string) => void;
 }
 
 const DeviceTree: React.FC<DeviceTreeProps> = ({ onSelect }) => {
-  // 🚀 修复点 1：把 any[] 替换为 DataNode[]
   const [treeData, setTreeData] = useState<DataNode[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // 🚀 修复点 2：把 fetchTreeData 的定义挪到 useEffect 前面
   const fetchTreeData = async () => {
     setLoading(true);
     try {
       const data = await getDeviceLabels();
       
-      // 🚀 修复点 3：给转换函数加上严格的入参和出参类型，彻底消灭 any
       const formatTree = (nodes: DeviceLabel[]): DataNode[] => {
         return nodes.map((node) => ({
-          title: node.deviceLabelName,
-          key: node.id,
-          children: node.children ? formatTree(node.children) : undefined,
+          title: node.labelName,
+          key: node.labelId,
+          children: node.children && node.children.length > 0 ? formatTree(node.children) : undefined,
         }));
       };
 
@@ -44,7 +42,7 @@ const DeviceTree: React.FC<DeviceTreeProps> = ({ onSelect }) => {
 
   useEffect(() => {
     fetchTreeData();
-  }, []); // 空依赖数组，确保只在组件挂载时执行一次
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '12px 8px' }}>
@@ -69,9 +67,50 @@ const DeviceTree: React.FC<DeviceTreeProps> = ({ onSelect }) => {
       </div>
 
       <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-        <Button type="dashed" block icon={<PlusOutlined />} style={{ borderRadius: 2, fontSize: 12 }}>
-          新建分类
-        </Button>
+        {/* 🚀 核心改造：将普通按钮包裹进 ModalForm */}
+        <ModalForm
+          title="新建设备分类"
+          width={400}
+          trigger={
+            <Button type="dashed" style={{ flex: 1, borderRadius: 2, fontSize: 12 }} icon={<PlusOutlined />}>
+              新建分类
+            </Button>
+          }
+          modalProps={{ destroyOnClose: true }}
+          onFinish={async (values) => {
+            const success = await addDeviceLabel({
+              deviceLabelName: values.deviceLabelName,
+              // 如果没选上级，或者选了"全部设备"(ALL)，都不传 parentId，当做根节点
+              deviceLabelParentId: (!values.deviceLabelParentId || values.deviceLabelParentId === 'ALL') ? undefined : values.deviceLabelParentId
+            });
+            if (success) {
+              message.success('分类创建成功');
+              fetchTreeData(); // 创建成功后自动刷新左侧树！
+              return true;
+            }
+            return false;
+          }}
+        >
+          <ProFormText 
+            name="deviceLabelName" 
+            label="分类名称" 
+            placeholder="请输入新分类名称"
+            rules={[{ required: true, message: '请输入分类名称' }]} 
+          />
+          <ProFormTreeSelect
+            name="deviceLabelParentId"
+            label="上级分类"
+            placeholder="请选择上级分类（不选则默认建在最外层）"
+            // 🚀 直接复用左侧树已经请求回来的数据，减少一次网络请求
+            request={async () => treeData[0]?.children || []}
+            fieldProps={{
+              fieldNames: { label: 'title', value: 'key' },
+              treeDefaultExpandAll: true,
+              allowClear: true,
+            }}
+          />
+        </ModalForm>
+
         <Button icon={<SettingOutlined />} style={{ borderRadius: 2 }} />
       </div>
     </div>
