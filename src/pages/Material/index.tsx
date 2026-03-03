@@ -1,6 +1,6 @@
 // src/pages/Material/index.tsx
 import React, { useState } from 'react';
-import { Button } from 'antd';
+import { Button, message, Spin } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import ContentShell from '@/components/ContentShell';
 import MaterialTree from './components/MaterialTree';
@@ -8,6 +8,7 @@ import MaterialTable from './components/MaterialTable';
 import MaterialDrawer from './components/MaterialDrawer';
 import MaterialFormDrawer from './components/MaterialFormDrawer';
 import { Material } from './typing';
+import { getMaterialDetail } from './service';
 
 const MaterialManagement: React.FC = () => {
   const [selectedLabelId, setSelectedLabelId] = useState<string>('NULL');
@@ -25,10 +26,26 @@ const MaterialManagement: React.FC = () => {
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | 'upgrade'>('create');
   const [currentRecord, setCurrentRecord] = useState<Material | null>(null);
   
-  const handleViewDetail = (record: Material, tabKey: string = '1') => {
-    setCurrentMaterial(record);
+// 💡 新增：抽屉全局 Loading 状态
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // 💡 核心改造：点击查看时，先拉取完整详情再打开抽屉
+  const handleViewDetail = async (record: Material, tabKey: string = '1') => {
+    // 先打开抽屉，展示 Loading
+    setCurrentMaterial(null);
     setActiveTab(tabKey);
     setDetailVisible(true);
+    setLoadingDetail(true);
+
+    try {
+      const fullDetail = await getMaterialDetail(record.materialId);
+      setCurrentMaterial(fullDetail);
+    } catch (error) {
+      message.error('获取物料详情失败');
+      setDetailVisible(false); // 失败则关闭抽屉
+    } finally {
+      setLoadingDetail(false);
+    }
   };
 
   return (
@@ -79,9 +96,10 @@ const MaterialManagement: React.FC = () => {
         </div>
       </div>
 
+      <Spin spinning={loadingDetail} tip="正在加载物料详细档案..." fullscreen />
       {/* 💡 修复：详情抽屉回来了！ */}
       <MaterialDrawer 
-        visible={detailVisible} 
+        visible={detailVisible && !loadingDetail} // 数据加载完才显示内容
         material={currentMaterial} 
         activeTab={activeTab}         
         onTabChange={setActiveTab}    

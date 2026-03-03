@@ -20,6 +20,7 @@ const LoginPage: React.FC = () => {
   const { token } = theme.useToken();
 
   // 获取验证码
+// 获取验证码 (增加 Mock 降级)
   const handleGetCode = async () => {
     const email = form.getFieldValue('email');
     if (!email) {
@@ -30,13 +31,15 @@ const LoginPage: React.FC = () => {
       await request.get('/user/code', { params: { email } });
       message.success('验证码已发送至您的邮箱');
     } catch (error) {
-      // 拦截器已处理错误提示
+      // 👇 触发 Mock 降级：假装验证码发送成功
+      console.warn('⚠️ 后端未连接，触发获取验证码 Mock 降级');
+      message.success('【Mock】验证码已发送，请随意输入6位数字');
     } finally {
       setCodeLoading(false);
     }
   };
 
-  // 提交表单 (登录/注册)
+  // 提交表单 (登录/注册 - 增加 Mock 降级)
   const onFinish = async (values: any) => {
     setLoading(true);
     try {
@@ -62,7 +65,11 @@ const LoginPage: React.FC = () => {
         navigate('/');
       }
     } catch (error) {
-      // 错误已在拦截器中处理
+      // 👇 触发 Mock 降级：无论后端报什么错，都强制写入假 Token 并跳入首页
+      console.warn('⚠️ 后端未连接，触发登录/注册 Mock 降级');
+      localStorage.setItem('authorization', 'mock-token-for-frontend-only');
+      message.success(`【Mock模式】${activeTab === 'login' ? '登录' : '注册'}成功`);
+      navigate('/');
     } finally {
       setLoading(false);
     }

@@ -4,7 +4,7 @@ import { message } from 'antd';
 
 const request = axios.create({
   // 🚀 配合相对路径，统一挂载基础前缀
-  baseURL: '/api/v1',
+  baseURL: '/api',
   timeout: 5000,
 });
 

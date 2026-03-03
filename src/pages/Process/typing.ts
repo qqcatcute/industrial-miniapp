@@ -1,20 +1,26 @@
 // src/pages/Process/typing.ts
 
 export interface Process {
-  id: string; // 编号（ID）：唯一值，必填
-  processName: string; // 名称（ProcessName）：最大长度100字，唯一值，必填
+  processId: string;   // 对应后端 processId
+  processName: string; // 工序名称
   
-  // --- 新增：为满足赛题 xDM-F 建模硬性要求而补齐的字段 ---
+  // 🚀 前端特有扩展：在列表查询时聚合进来的模板列表
+  templates?: ProcessTemplate[]; 
+}
+
+export interface ProcessTemplate {
+  templateId: string;
+  processId: string;
+  templateName: string; // 模板名称
+  templateDescription?: string; // 模板描述
+  startTime?: string;
+  endTime?: string;
+  
+  // --- 🚀 偷渡字段（通过 inputJson 存储与解析） ---
   productionSteps?: string; // 生产步骤
   equipments?: string;      // 生产和检测设备
   operator?: string;        // 操作人员 (岗位要求)
-  startTime?: string;       // 开始时间 (标准排程参考)
-  endTime?: string;         // 结束时间 (标准排程参考)
-  // --------------------------------------------------------
-
-  labelIds?: string[]; // 关联的工序类型标签 ID 数组
-  description?: string; // 工序描述
-  updatedAt?: string;
+  labelIds?: string[];      // 关联的工序类型标签 ID 数组
 }
 
 export interface ProcessLabel {

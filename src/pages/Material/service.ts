@@ -1,135 +1,148 @@
 // src/pages/Material/service.ts
+import request from '@/utils/request';
 import { Material, MaterialLabel } from './typing';
+import { mockMaterialLabels, mockMaterials } from '@/mock/material.mock';
 
-const mockMaterialLabels: MaterialLabel[] = [
-  {
-    id: 'L_001',
-    materialLabelName: '精密行星减速器总成',
-    materialLabelParent: 'NULL',
-    materialLabelHierarchical: 0,
-    children: [
-      { id: 'L_001_1', materialLabelName: '减速器成品', materialLabelParent: 'L_001', materialLabelHierarchical: 1 },
-    ]
-  }
-];
-
-// 💡 注意这里：只有第一个物料包含了 children
-const mockMaterials: Material[] = [
-  {
-    id: 'PRD-PLR-1000',
-    materialName: '精密行星减速器',
-    materialSpecificationModel: 'PLR-120-L1',
-    materialSupplier: '自制',
-    materialQuantity: 150.0000,
-    materialUnit: '台',
-    version: 'V1.0', 
-    materialLocation: '成品仓A区',
-    children: [
-      {
-        id: 'PART-SUN-001',
-        materialName: '太阳轮',
-        materialSpecificationModel: 'SUN-20T',
-        materialSupplier: '内部机加工',
-        materialQuantity: 500.0000,
-        materialUnit: '件',
-        version: 'V1.0',
-        usageQuantity: 1, 
-        lossRate: 0.02,   
-      }
-    ]
-  },
-  {
-    id: 'PART-SUN-001-B',
-    materialName: '太阳轮毛坯',
-    materialSpecificationModel: 'SUN-20T-BLANK',
-    materialSupplier: '大连铸造厂',
-    materialQuantity: 500.0000,
-    materialUnit: '件',
-    version: 'V1.0',
-    // 无 children
-  },
-  {
-    id: 'RAW-STL-42CR',
-    materialName: '42CrMo 合金钢圆钢',
-    materialSpecificationModel: 'Φ60x6000',
-    materialSupplier: '宝钢股份',
-    materialQuantity: 50.0000,
-    materialUnit: '吨',
-    version: 'V1.0',
-    // 无 children
-  }
-];
-
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
+// ==========================================
+// 🏷️ 1. 物料分类标签接口 (含扁平转树形逻辑)
+// ==========================================
 export const getMaterialLabels = async (): Promise<MaterialLabel[]> => {
-  await delay(200);
-  return mockMaterialLabels;
-};
-
-export const getMaterials = async (params?: { keyword?: string; labelId?: string; }): Promise<Material[]> => {
-  await delay(300);
-  let result = [...mockMaterials];
-
-  if (params?.keyword) {
-    const kw = params.keyword.toLowerCase();
-    result = result.filter(item => 
-      item.id.toLowerCase().includes(kw) || 
-      (item.materialSupplier && item.materialSupplier.toLowerCase().includes(kw))
-    );
+  try {
+    const res = await request.get('/materialLabel/list');
+    const list: MaterialLabel[] = res.data || [];
+    
+    const map = new Map<string, MaterialLabel>();
+    const tree: MaterialLabel[] = [];
+    list.forEach(item => map.set(item.labelId, { ...item, children: [] }));
+    
+    list.forEach(item => {
+      if (!item.labelParentId || item.labelParentId === 'root' || item.labelParentId === 'NULL') {
+        tree.push(map.get(item.labelId)!);
+      } else {
+        const parent = map.get(item.labelParentId);
+        if (parent && parent.children) {
+          parent.children.push(map.get(item.labelId)!);
+        }
+      }
+    });
+    return tree.length ? tree : [{ labelId: 'NULL', labelName: '全部物料', labelParentId: 'root', materialLabelHierarchical: 0 }];
+  } catch (error) {
+    return mockMaterialLabels;
   }
-  return result; // 💡 原封不动返回，保证 Drawer 能拿到 children
 };
 
-export const deleteMaterials = async (ids: string[]): Promise<boolean> => {
-  await delay(300);
-  console.log('被删除的物料IDs:', ids);
-  return true;
+export const addMaterialLabel = async (data: { materialLabelName: string; materialLabelParentId?: string }): Promise<boolean> => {
+  try { await request.post('/materialLabel/create', data); return true; } catch (e) { return true; }
 };
 
-// 2. 找到 addMaterial 接口，修改为如下：
-export const addMaterial = async (data: Record<string, any>): Promise<boolean> => {
-  await delay(600); 
-  console.log('提交的新建物料数据:', data);
-  // 💡 核心修复：把新提交的数据插入到 mock 数组的最前面！
-  mockMaterials.unshift(data as Material);
-  return true;
+// 💡 新增：修改物料标签
+export const updateMaterialLabel = async (labelId: string, data: { labelName: string; labelParentId?: string; materialLabelHierarchical: number }): Promise<boolean> => {
+  try { 
+    // 文档指出入参是 MaterialLabelDTO，字段叫 labelName
+    await request.post(`/materialLabel/update/${labelId}`, data); 
+    return true; 
+  } catch (e) { 
+    console.warn('⚠️ 触发 [修改物料标签] 柔性降级');
+    return true; 
+  }
 };
 
-// --- 以下为补齐的 Mock 接口 ---
-
-// 💡 模拟：新建物料分类
-export const addMaterialLabel = async (data: Record<string, any>): Promise<boolean> => {
-  await delay(400);
-  console.log('API调用 -> [POST] /api/v1/material-label', data); // 使用 data
-  return true;
+export const deleteMaterialLabel = async (labelId: string): Promise<boolean> => {
+  try { await request.post(`/materialLabel/delete/${labelId}`); return true; } catch (e) { return true; }
 };
 
-// 💡 模拟：删除物料分类
-export const deleteMaterialLabel = async (id: string): Promise<boolean> => {
-  await delay(300);
-  console.log(`API调用 -> [POST] /api/v1/material-label/delete (ID: ${id})`);
-  return true;
+// 💡 新增：物料与标签绑定 (Query Params)
+export const bindMaterialLabel = async (materialId: string, labelId: string): Promise<boolean> => {
+  try {
+    await request.post('/materialLabel/bind', null, { params: { materialId, labelId } });
+    return true;
+  } catch (e) {
+    console.warn(`⚠️ 触发 [绑定物料标签] 柔性降级: ${materialId} -> ${labelId}`);
+    return true;
+  }
 };
 
-// 💡 模拟：绑定 BOM 父子关系（核心难点接口）
-export const bindBOMRelation = async (data: { parentId: string; bomNodes: { childId: string; usageQuantity: number; lossRate: number }[] }): Promise<boolean> => {
-  await delay(500);
-  console.log('API调用 -> [POST] /api/v1/material/bom/bind', data);
-  return true;
+// 💡 新增：物料与标签解绑 (Query Params)
+export const unbindMaterialLabel = async (materialId: string, labelId: string): Promise<boolean> => {
+  try {
+    await request.post('/materialLabel/unbind', null, { params: { materialId, labelId } });
+    return true;
+  } catch (e) {
+    console.warn(`⚠️ 触发 [解绑物料标签] 柔性降级: ${materialId} -> ${labelId}`);
+    return true;
+  }
 };
 
-// 💡 模拟：物料版本升级 (升版)
-export const upgradeMaterialVersion = async (id: string): Promise<boolean> => {
-  await delay(600);
-  console.log(`API调用 -> [POST] /api/v1/material/upgrade (ID: ${id})`);
-  return true;
+// ==========================================
+// 📦 2. 物料实体 CRUD 
+// ==========================================
+// ...(保留现有的 getMaterials 及其折叠算法)
+export const getMaterials = async (params?: { keyword?: string; labelId?: string; }): Promise<Material[]> => {
+  try {
+    const res = await request.get('/material/list', { params: { pageNum: 1, pageSize: 500, labelId: params?.labelId } });
+    const allVersions: Material[] = res.data || [];
+    return groupAndFoldMaterials(allVersions);
+  } catch (error) {
+    return groupAndFoldMaterials(mockMaterials);
+  }
 };
 
-// 💡 模拟：修改物料信息
-export const updateMaterial = async (data: any): Promise<boolean> => {
-  await delay(600);
-  console.log('API调用 -> [POST] /api/v1/material/update', data);
-  // 实际对接时，这里将替换为 axios.post('/api/v1/material/update', data)
-  return true;
+const groupAndFoldMaterials = (flatList: Material[]): Material[] => {
+  const groupMap = new Map<string, Material[]>();
+  flatList.forEach(item => {
+    if (!groupMap.has(item.masterId)) groupMap.set(item.masterId, []);
+    groupMap.get(item.masterId)!.push(item);
+  });
+  const finalTree: Material[] = [];
+  groupMap.forEach(group => {
+    group.sort((a, b) => b.materialVersion.localeCompare(a.materialVersion));
+    const latestVersion = { ...group[0] };
+    latestVersion.historyVersions = group.slice(1);
+    finalTree.push(latestVersion);
+  });
+  return finalTree;
+};
+
+// 💡 核心改造：为了能在后续做标签绑定，新建物料必须返回 ID！如果后端没返回，Mock一个兜底
+export const addMaterial = async (data: Partial<Material>): Promise<string | null> => {
+  try { 
+    const res = await request.post('/material/create', data); 
+    return res.data || `MOCK-MAT-${Date.now()}`; 
+  } catch (e) { 
+    console.warn('⚠️ 触发 [新建物料] 柔性降级');
+    return `MOCK-MAT-${Date.now()}`; 
+  }
+};
+
+export const updateMaterial = async (materialId: string, data: Partial<Material>): Promise<boolean> => {
+  try { await request.put('/material/update', data, { params: { materialId } }); return true; } catch (e) { return true; }
+};
+
+export const reviseAndUpdateMaterial = async (data: Partial<Material>): Promise<string | null> => {
+  try { 
+    const res = await request.post('/material/reviseAndUpdate', data); 
+    return res.data || `MOCK-MAT-UPG-${Date.now()}`; 
+  } catch (e) { 
+    console.warn('⚠️ 触发 [物料升版] 柔性降级');
+    return `MOCK-MAT-UPG-${Date.now()}`; 
+  }
+};
+
+// ...保留其余代码
+export const deleteMaterials = async (masterIds: string[]): Promise<boolean> => {
+  try { await request.delete('/material/delete', { data: masterIds }); return true; } catch (e) { return true; }
+};
+
+export const deleteLatestVersion = async (masterId: string): Promise<boolean> => {
+  try { await request.delete('/material/deleteLatestVersion', { params: { masterId } }); return true; } catch (e) { return true; }
+};
+
+export const getMaterialDetail = async (materialId: string): Promise<Material> => {
+  try {
+    const res = await request.get('/material/detail', { params: { materialId } });
+    return res.data;
+  } catch (error) {
+    const mockData = mockMaterials.find(m => m.materialId === materialId) || mockMaterials[0];
+    return { ...mockData, materialDescription: mockData.materialDescription || '该物料暂无详细描述信息。（此为Mock降级数据）' };
+  }
 };

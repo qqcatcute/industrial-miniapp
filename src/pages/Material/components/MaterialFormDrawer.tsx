@@ -1,17 +1,8 @@
 // src/pages/Material/components/MaterialFormDrawer.tsx
 import React, { useEffect, useState } from 'react';
-import { 
-  DrawerForm, 
-  ProFormText, 
-  ProFormDigit, 
-  ProFormSelect, 
-  ProFormTextArea,
-  ProFormTreeSelect
-} from '@ant-design/pro-components';
+import { DrawerForm, ProFormText, ProFormDigit, ProFormSelect, ProFormTextArea, ProFormTreeSelect } from '@ant-design/pro-components';
 import { Form, message } from 'antd';
-// 💡 修复1：补充了 updateMaterial 的引入
-import { getMaterialLabels, addMaterial, updateMaterial } from '../service';
-// 💡 修复2：补充了 Material 的引入
+import { getMaterialLabels, addMaterial, updateMaterial, reviseAndUpdateMaterial, bindMaterialLabel, unbindMaterialLabel } from '../service';
 import { MaterialLabel, Material } from '../typing';
 
 interface MaterialFormDrawerProps {
@@ -23,29 +14,19 @@ interface MaterialFormDrawerProps {
   record?: Material | null;            
 }
 
-const titleMap = {
-  create: '新建物料档案',
-  edit: '编辑物料档案',
-  upgrade: '物料升版 (生成新版本)'
-};
+const titleMap = { create: '新建物料', edit: '编辑物料', upgrade: '物料升版修订' };
 
-const MaterialFormDrawer: React.FC<MaterialFormDrawerProps> = ({ 
-  visible, onVisibleChange, onSuccess, defaultLabelId, mode, record
-}) => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+const MaterialFormDrawer: React.FC<MaterialFormDrawerProps> = ({ visible, onVisibleChange, onSuccess, defaultLabelId, mode, record }) => {
   const [treeData, setTreeData] = useState<any[]>([]);
   const [form] = Form.useForm();
 
-  // 💡 修复3：恢复之前不小心删掉的下拉树数据拉取逻辑
   useEffect(() => {
     const fetchTree = async () => {
       const data = await getMaterialLabels();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const formatTree = (nodes: MaterialLabel[]): any[] => {
         return nodes.map(node => ({
-          label: node.materialLabelName,
-          value: node.id,
-          children: node.children ? formatTree(node.children) : undefined,
+          label: node.labelName, value: node.labelId,
+          children: node.children?.length ? formatTree(node.children) : undefined,
         }));
       };
       setTreeData(formatTree(data));
@@ -53,124 +34,83 @@ const MaterialFormDrawer: React.FC<MaterialFormDrawerProps> = ({
     fetchTree();
   }, []);
 
-useEffect(() => {
+  useEffect(() => {
     if (visible) {
-      if (mode === 'edit' && record) {
-        form.setFieldsValue(record);
-      } else if (mode === 'upgrade' && record) {
-        // 💡 升版模式：完全继承老数据，不再清空 ID，仅把版本号加 1
+      if ((mode === 'edit' || mode === 'upgrade') && record) {
+        // 💡 ⚠️ 核心防呆：详情接口并未返回物料属于哪个分类，
+        // 这里为了体验，我们假定当前左侧树选中的节点就是它的老分类，进行预填。
         form.setFieldsValue({
-          ...record,
-          version: 'V2.0', // 自动预填新版本
+            ...record,
+            materialLabel: defaultLabelId !== 'NULL' ? defaultLabelId : undefined
         });
       } else {
         form.resetFields();
-        form.setFieldsValue({
-          version: 'V1.0', 
-          materialLabel: defaultLabelId !== 'NULL' ? defaultLabelId : undefined
-        });
+        if (defaultLabelId && defaultLabelId !== 'NULL') {
+            form.setFieldsValue({ materialLabel: defaultLabelId });
+        }
       }
     }
-}, [visible, mode, record, defaultLabelId, form]);
+  }, [visible, mode, record, defaultLabelId, form]);
   
   return (
     <DrawerForm
-      title={titleMap[mode]}
-      form={form}
-      open={visible}
-      onOpenChange={onVisibleChange}
+      title={titleMap[mode]} form={form} open={visible} onOpenChange={onVisibleChange}
       drawerProps={{ destroyOnClose: true, maskClosable: false }}
-      layout="vertical"
-      grid={true} 
-      rowProps={{ gutter: [16, 0] }}
+      layout="vertical" grid={true} rowProps={{ gutter: [16, 0] }}
       onFinish={async (values) => {
         let success = false;
-        if (mode === 'edit') {
-          success = await updateMaterial({ ...values, id: record?.id });
+        let currentMaterialId = record?.materialId;
+        
+        // 1. 分离业务字段与分类标签字段
+        const submitData = { ...values };
+        const selectedLabel = submitData.materialLabel;
+        delete submitData.materialLabel; // 不要把这个传给纯粹的物料实体接口
+
+        // 2. 提交主干数据
+        if (mode === 'edit' && currentMaterialId) {
+          success = await updateMaterial(currentMaterialId, submitData);
         } else if (mode === 'upgrade') {
-          success = await addMaterial(values); 
+          const newId = await reviseAndUpdateMaterial({ ...submitData, masterId: record?.masterId }); 
+          if (newId) { currentMaterialId = newId; success = true; }
         } else {
-          success = await addMaterial(values);
+          const newId = await addMaterial(submitData);
+          if (newId) { currentMaterialId = newId; success = true; }
         }
 
-        if (success) {
-          message.success(`${titleMap[mode]} 成功！`);
-          onSuccess(); 
-          return true; 
+        // 3. 💡 智能编排：处理标签的解绑与绑定
+        if (success && currentMaterialId) {
+           const oldLabel = defaultLabelId; // 这是它操作前所在的分类
+           const newLabel = selectedLabel;  // 这是它在表单里新选的分类
+
+           // 如果更换了分类，且它原本是有真实分类的（不是在'全部'根节点下盲建的）
+           if (newLabel && oldLabel && oldLabel !== newLabel && oldLabel !== 'NULL') {
+               await unbindMaterialLabel(currentMaterialId, oldLabel);
+           }
+           // 如果有新标签，且与老的不同，执行绑定（即使原本是'全部'，新建时也需要绑定）
+           if (newLabel && newLabel !== oldLabel) {
+               await bindMaterialLabel(currentMaterialId, newLabel);
+           }
+        }
+
+        if (success) { 
+            message.success(`${titleMap[mode]} 成功！`); 
+            onSuccess(); 
+            return true; 
         }
         return false;
       }}
     >
-<ProFormText
-        name="id"
-        label="物料编码"
-        colProps={{ span: 12 }}
-        placeholder="请输入唯一编码 (如 PRD-PLR-1000)"
-        disabled={mode === 'edit' || mode === 'upgrade'} 
-        rules={[
-          { required: true, message: '物料编码是必填项！' },
-          // 💡 加上这行正则校验：只允许大写字母、数字和中划线！
-          { pattern: /^[A-Z0-9-]+$/, message: '编码只能包含大写字母、数字和中划线！' }
-        ]}
-      />
-      <ProFormText
-        name="materialName"
-        label="物料名称"
-        colProps={{ span: 12 }}
-        placeholder="例如：精密行星减速器"
-        rules={[{ required: true, message: '物料名称是必填项！' }]}
-      />
-      <ProFormTreeSelect
-        name="materialLabel"
-        label="所属分类"
-        colProps={{ span: 12 }}
-        placeholder="请选择物料分类"
-        request={async () => treeData}
-        rules={[{ required: true, message: '请选择所属分类！' }]}
-      />
-      <ProFormText
-        name="version"
-        label="版本号"
-        colProps={{ span: 12 }}
-        rules={[{ required: true }]}
-      />
-      <ProFormText
-        name="materialSpecificationModel"
-        label="规格型号"
-        colProps={{ span: 12 }}
-        placeholder="例如：PLR-120-L1"
-        rules={[{ required: true, message: '赛题要求规格型号必填！' }]}
-      />
-      <ProFormText
-        name="materialSupplier"
-        label="供应商"
-        colProps={{ span: 12 }}
-        placeholder="例如：宝钢股份 / 自制"
-        rules={[{ required: true, message: '赛题要求供应商必填！' }]}
-      />
-      <ProFormDigit
-        name="materialQuantity"
-        label="初始库存数量"
-        colProps={{ span: 12 }}
-        min={0}
-        fieldProps={{ precision: 4 }} 
-        rules={[{ required: true, message: '赛题要求库存数量必填！' }]}
-      />
+      <ProFormText name="materialName" label="物料名称" colProps={{ span: 12 }} rules={[{ required: true }]} />
+      <ProFormTreeSelect name="materialLabel" label="所属分类" colProps={{ span: 12 }} request={async () => treeData} placeholder="如果不选，物料将在'全部物料'中展示" />
+      <ProFormText name="materialSpecificationModel" label="规格型号" colProps={{ span: 12 }} rules={[{ required: true }]} />
+      <ProFormText name="materialSupplier" label="供应商" colProps={{ span: 12 }} rules={[{ required: true }]} />
+      <ProFormDigit name="materialQuantity" label="库存数量" colProps={{ span: 12 }} min={0} fieldProps={{ precision: 4 }} rules={[{ required: true }]} />
       <ProFormSelect
-        name="materialUnit"
-        label="库存单位"
-        colProps={{ span: 12 }}
-        options={[
-          { label: '件', value: '件' },
-          { label: '台', value: '台' },
-          { label: '个', value: '个' },
-          { label: '吨', value: '吨' },
-          { label: '米', value: '米' },
-        ]}
+        name="materialUnit" label="库存单位" colProps={{ span: 12 }}
+        options={[{ label: '件', value: '件' }, { label: '台', value: '台' }, { label: '个', value: '个' }, { label: '吨', value: '吨' }]}
         rules={[{ required: true }]}
       />
-      <ProFormText name="materialLocation" label="存放位置" colProps={{ span: 24 }} placeholder="例如：成品仓A区" />
-      <ProFormTextArea name="materialDescription" label="物料描述" colProps={{ span: 24 }} placeholder="请输入该物料的技术参数、用途或其他备注信息..." />
+      <ProFormTextArea name="materialDescription" label="物料描述" colProps={{ span: 24 }} fieldProps={{ rows: 3 }} />
     </DrawerForm>
   );
 };

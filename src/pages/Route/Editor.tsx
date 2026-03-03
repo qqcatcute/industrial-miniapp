@@ -2,43 +2,43 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import ReactFlow, { ReactFlowProvider, Controls, Background, useNodesState, useEdgesState, addEdge, Connection, Edge, MarkerType } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Button, message, Tag } from 'antd';
+import { Button, message, Tag, Spin } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined, BuildOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
+import request from '@/utils/request'; // 引入网络请求
 import PropertyPanel from './components/PropertyPanel';
-// 👇 引入我们刚才写的牛逼节点
 import ProcessNode from './components/ProcessNode';
 import { saveRouteConfig, getRouteConfig } from './service';
 
-// 👇 注册自定义节点类型
 const nodeTypes = {
   processNode: ProcessNode,
 };
 
-const PROCESS_LIBRARY = [
-  { id: 'PROC-001', name: '毛坯制造', type: '成型工艺', color: '#1677FF' },
-  { id: 'PROC-002', name: '粗加工', type: '机械加工', color: '#FA8C16' },
-  { id: 'PROC-003', name: '精加工', type: '机械加工', color: '#FA8C16' },
-  { id: 'PROC-004', name: '检测', type: '质量控制', color: '#52C41A' },
-  { id: 'PROC-005', name: '入库', type: '仓储物流', color: '#722ED1' },
-];
-
 let id = 0;
 const getId = () => `step_${id++}`;
+
+// 颜色分配器：让动态获取的工序也能有好看的颜色
+const COLORS = ['#1677FF', '#FA8C16', '#13c2c2', '#722ED1', '#EB2F96'];
 
 const EditorCanvas: React.FC = () => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
-  const [selectedNode, setSelectedNode] = useState<{key: string, title: string} | null>(null);
+  const [selectedNode, setSelectedNode] = useState<{id: string, data: any} | null>(null);
+  
   const [loading, setLoading] = useState(false);
+  
+  // 🚀 新增：动态存储左侧的真实基础工序库
+  const [processLibrary, setProcessLibrary] = useState<any[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
 
   const navigate = useNavigate();
   const { id: routeId } = useParams();
 
-  // 页面加载时，尝试获取已保存的画布数据
+  // 1. 初始化画布数据 & 动态加载左侧工序库
   useEffect(() => {
+    // 拉取历史画布保存的节点
     if (routeId) {
       getRouteConfig(routeId).then(res => {
         if (res.nodes.length > 0) {
@@ -47,13 +47,36 @@ const EditorCanvas: React.FC = () => {
         }
       });
     }
+
+    // 🚀 核心：拉取真实的工序列表填充左侧组件库
+    setLibraryLoading(true);
+    request.get('/process/list', { params: { pageNum: 1, pageSize: 100 } })
+      .then(res => {
+         const list = res.data || [];
+         // 映射为画板需要的格式，并随机分配一个颜色
+         const library = list.map((item: any, index: number) => ({
+             id: item.processId,
+             name: item.processName,
+             type: '基础工序', 
+             color: COLORS[index % COLORS.length] 
+         }));
+         setProcessLibrary(library);
+      })
+      .catch(() => {
+         // 柔性降级：请求失败则给一套 Mock 库
+         setProcessLibrary([
+            { id: 'PROC-001', name: '毛坯制造 (Mock)', type: '成型工艺', color: '#1677FF' },
+            { id: 'PROC-002', name: '精加工 (Mock)', type: '机械加工', color: '#FA8C16' }
+         ]);
+      })
+      .finally(() => setLibraryLoading(false));
   }, [routeId, setNodes, setEdges]);
 
-  // 连线逻辑 (平滑连线 + 箭头)
+  // 平滑连线逻辑
   const onConnect = useCallback((params: Connection | Edge) => {
     const edgeWithArrow = {
       ...params,
-      type: 'smoothstep', // 工业风常用的直角平滑折线
+      type: 'smoothstep',
       markerEnd: { type: MarkerType.ArrowClosed, color: '#8c8c8c' },
       style: { stroke: '#8c8c8c', strokeWidth: 2 }
     };
@@ -81,14 +104,16 @@ const EditorCanvas: React.FC = () => {
       const processData = JSON.parse(processDataStr);
       const position = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
 
+      // 🚀 创建新节点，包含 processId，但不包含 templateId (需要用户在右侧选)
       const newNode = {
         id: getId(),
-        type, // 这里会接收到 'processNode'
+        type, 
         position,
         data: { 
           label: processData.name, 
-          processId: processData.id,
-          processName: processData.name,
+          processId: processData.id,     // 记录属于哪个大工序
+          processName: processData.name, 
+          templateId: undefined,         // 等待用户选择模板！
           workTime: 0,
           workTimeUnit: '分',
           color: processData.color,
@@ -96,6 +121,9 @@ const EditorCanvas: React.FC = () => {
         }
       };
       setNodes((nds) => nds.concat(newNode));
+      
+      // 拖拽完成后，自动选中该节点，弹出右侧面板强迫用户选模板
+      setSelectedNode(newNode);
     },
     [reactFlowInstance, setNodes]
   );
@@ -114,12 +142,21 @@ const EditorCanvas: React.FC = () => {
     setSelectedNode((prev: any) => ({ ...prev, data: { ...prev.data, ...newData } }));
   };
 
-  // 👇 真实保存逻辑
+  // 保存画布到后端
   const handleSave = async () => {
     if (!routeId) return;
+    
+    // 🛡️ 提交前的强校验：检查是不是所有的节点都选了模板！
+    const invalidNodes = nodes.filter(n => !n.data.templateId);
+    if (invalidNodes.length > 0) {
+      message.error(`有 ${invalidNodes.length} 个步骤未配置执行模板，请点击节点在右侧完成选择！`);
+      return;
+    }
+
     setLoading(true);
+    // 这里你的 service 里面已经有保存逻辑了，会将带 templateId 的 nodes 一起打包发给后端
     await saveRouteConfig(routeId, nodes, edges);
-    message.success('工艺路线编排保存成功！');
+    message.success('工艺路线编排保存成功！所有的模板关联已生效。');
     setLoading(false);
     setTimeout(() => {
       navigate(-1);
@@ -131,30 +168,34 @@ const EditorCanvas: React.FC = () => {
       <div style={{ height: 48, background: '#fff', borderBottom: '1px solid #d9d9d9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>返回</Button>
-          <span style={{ fontSize: 16, fontWeight: 600 }}>工艺编排画布 - {routeId === 'RT-1001' ? '中心轮零件加工' : '未命名路线'}</span>
-          <Tag color="blue">V 1.0</Tag>
+          <span style={{ fontSize: 16, fontWeight: 600 }}>工艺编排画布 - {routeId === 'RT-1001' ? '中心轮零件加工' : '自定义路线'}</span>
+          <Tag color="cyan">V 1.0</Tag>
         </div>
-        <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={loading}>保存并发布</Button>
+        <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={loading}>保存工艺路线与模板关系</Button>
       </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div style={{ width: 220, background: '#fff', borderRight: '1px solid #d9d9d9', padding: 16 }}>
-          <div style={{ marginBottom: 16, color: '#888', fontSize: 13 }}><BuildOutlined style={{ marginRight: 8 }} />拖拽工序卡片到右侧画布</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {PROCESS_LIBRARY.map((item) => (
-              <div
-                key={item.id}
-                // 👇 注意这里，拖拽出去的类型变成了咱们自定义的 processNode
-                onDragStart={(event) => onDragStart(event, 'processNode', item)}
-                draggable
-                style={{
-                  padding: '8px 12px', border: `1px solid ${item.color}80`, borderLeft: `4px solid ${item.color}`,
-                  borderRadius: 2, background: '#fafafa', cursor: 'grab', fontSize: 13, fontWeight: 500
-                }}
-              >
-                {item.name} <span style={{ float: 'right', color: '#aaa', fontSize: 12 }}>{item.type}</span>
-              </div>
-            ))}
+        <div style={{ width: 220, background: '#fff', borderRight: '1px solid #d9d9d9', padding: 16, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ marginBottom: 16, color: '#888', fontSize: 13 }}><BuildOutlined style={{ marginRight: 8 }} />拖拽工序到右侧画板</div>
+          
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {libraryLoading ? (
+               <div style={{ textAlign: 'center', padding: 40 }}><Spin tip="加载基础工序..." /></div>
+            ) : (
+               processLibrary.map((item) => (
+                 <div
+                   key={item.id}
+                   onDragStart={(event) => onDragStart(event, 'processNode', item)}
+                   draggable
+                   style={{
+                     padding: '8px 12px', border: `1px solid ${item.color}80`, borderLeft: `4px solid ${item.color}`,
+                     borderRadius: 2, background: '#fafafa', cursor: 'grab', fontSize: 13, fontWeight: 500
+                   }}
+                 >
+                   {item.name} <span style={{ float: 'right', color: '#aaa', fontSize: 12 }}>{item.type}</span>
+                 </div>
+               ))
+            )}
           </div>
         </div>
 
@@ -162,7 +203,7 @@ const EditorCanvas: React.FC = () => {
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            nodeTypes={nodeTypes} // 👇 注入自定义节点解析
+            nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
