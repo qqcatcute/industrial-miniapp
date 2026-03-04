@@ -14,8 +14,9 @@ import {
   SearchOutlined,
   DeploymentUnitOutlined // 👆 新增的高级工业感 Logo Icon
 } from '@ant-design/icons';
-import { Input, Dropdown, theme, Spin, Space, Badge, ConfigProvider } from 'antd';
+import { Input, Dropdown, theme, Spin, Space, Badge, ConfigProvider, message } from 'antd';
 import { queryCurrentUser, CurrentUser } from '@/services/userService';
+import ChatBot from '@/components/ChatBot';
 
 const { compactAlgorithm } = theme;
 
@@ -63,7 +64,7 @@ const BasicLayout: React.FC = () => {
     >
       <div style={{ height: '100vh' }}>
         <ProLayout
-          title="智汇工软"
+          title="智工轻艺"
           // 👇 替换掉了丑陋的默认图片，换成了科技青颜色的节点 Icon
           logo={<DeploymentUnitOutlined style={{ color: '#13c2c2', fontSize: 28 }} />}
           {...routeConfig}
@@ -122,10 +123,21 @@ const BasicLayout: React.FC = () => {
                 </span>
               </Space>
             ),
-            render: (props, dom) => (
+render: (props, dom) => (
               <Dropdown
                 menu={{
                   items: [{ key: 'logout', icon: <LogoutOutlined />, label: '退出登录' }],
+                  // 🚀 核心修复：增加点击事件处理
+                  onClick: ({ key }) => {
+                    if (key === 'logout') {
+                      // 1. 清除本地存储的 token
+                      localStorage.removeItem('authorization');
+                      // 2. 提示用户
+                      message.success('已安全退出系统');
+                      // 3. 跳转回登录页
+                      navigate('/login');
+                    }
+                  }
                 }}
               >
                 <div style={{ cursor: 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center' }}>
@@ -138,21 +150,19 @@ const BasicLayout: React.FC = () => {
           actionsRender={(props) => {
             if (props.isMobile) return [];
             return [
-              <div key="search-box" style={{ 
-                display: 'flex', alignItems: 'center', 
-                background: '#f1f3f5', border: '1px solid #d9d9d9',
-                borderRadius: 2, padding: '4px 8px', width: 260,
-                marginRight: 12, height: 32 
-              }}>
-                <SearchOutlined style={{ color: '#999', marginRight: 8 }} />
-                <Input bordered={false} placeholder="搜索 (Ctrl+K)" style={{ padding: 0, fontSize: 13, background: 'transparent' }} />
-              </div>,
+              // <div key="search-box" style={{ 
+              //   display: 'flex', alignItems: 'center', 
+              //   background: '#f1f3f5', border: '1px solid #d9d9d9',
+              //   borderRadius: 2, padding: '4px 8px', width: 260,
+              //   marginRight: 12, height: 32 
+              // }}>
+              //   <SearchOutlined style={{ color: '#999', marginRight: 8 }} />
+              //   <Input bordered={false} placeholder="搜索 (Ctrl+K)" style={{ padding: 0, fontSize: 13, background: 'transparent' }} />
+              // </div>,
               
               <div key="notify" style={{ padding: '0 12px', cursor: 'pointer', borderLeft: '1px solid #f0f0f0' }}>
-                  <Badge count={5} size="small" offset={[2, -2]}>
-                   <BellOutlined style={{ fontSize: 16, color: '#555' }} />
-                 </Badge>
-              </div>,
+   <BellOutlined style={{ fontSize: 16, color: '#555' }} />
+</div>,
               <QuestionCircleOutlined key="help" style={{ fontSize: 16, color: '#555', padding: '0 12px' }} />,
             ];
           }}
@@ -174,6 +184,8 @@ const BasicLayout: React.FC = () => {
           }}>
              <Outlet />
           </div>
+          {/* 👇 2. 挂载 ChatBot 机器人，由于内置了 fixed 定位，它会自动固定在右下角 */}
+          <ChatBot />
         </ProLayout>
       </div>
     </ConfigProvider>

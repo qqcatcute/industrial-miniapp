@@ -119,6 +119,7 @@ const DeviceTree: React.FC<DeviceTreeProps> = ({ onSelect }) => {
         </ModalForm>
 
         {/* 🚀 修复点 3：新增“编辑分类”的 ModalForm */}
+{/* 🚀 修复点 3：修改“编辑分类”的 ModalForm */}
         <ModalForm
           title={`修改分类: ${selectedNode?.title || ''}`}
           width={400}
@@ -126,30 +127,31 @@ const DeviceTree: React.FC<DeviceTreeProps> = ({ onSelect }) => {
             <Button 
               icon={<EditOutlined />} 
               style={{ borderRadius: 2 }} 
-              // 如果没选中节点，或者选中的是"全部设备"(根节点不允许改名)，则禁用编辑按钮
               disabled={!selectedNode || selectedNode.key === 'ALL'} 
               title="编辑当前选中的分类"
             />
           }
           modalProps={{ destroyOnClose: true }}
-          initialValues={{ labelName: selectedNode?.title }}
+          // 💡 修复：初始化属性名对齐
+          initialValues={{ deviceLabelName: selectedNode?.title }}
           onFinish={async (values) => {
             if (!selectedNode) return false;
-            // 传递选中的节点 key 和新填写的名字进行修改
             const success = await updateDeviceLabel(selectedNode.key, {
-              labelName: values.labelName,
-              deviceLabelHierarchical: 1 // 必填字段，传个默认的层级占位
+              // 💡 修复：传参属性名对齐
+              deviceLabelName: values.deviceLabelName,
+              deviceLabelHierarchical: 1 
             });
             if (success) {
               message.success('分类修改成功');
-              fetchTreeData(); // 改完之后重新拉取一次左侧树
+              fetchTreeData(); 
               return true;
             }
             return false;
           }}
         >
+          {/* 💡 修复：输入框绑定的 name 对齐 */}
           <ProFormText 
-            name="labelName" 
+            name="deviceLabelName" 
             label="新分类名称" 
             placeholder="请输入新的名称"
             rules={[{ required: true, message: '分类名称不能为空' }]} 

@@ -24,14 +24,17 @@ const EditorCanvas: React.FC = () => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [selectedNode, setSelectedNode] = useState<{id: string, data: any} | null>(null);
   
   const [loading, setLoading] = useState(false);
   
   // 🚀 新增：动态存储左侧的真实基础工序库
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [processLibrary, setProcessLibrary] = useState<any[]>([]);
-  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryLoading, setLibraryLoading] = useState(true);
 
   const navigate = useNavigate();
   const { id: routeId } = useParams();
@@ -49,25 +52,25 @@ const EditorCanvas: React.FC = () => {
     }
 
     // 🚀 核心：拉取真实的工序列表填充左侧组件库
-    setLibraryLoading(true);
-    request.get('/process/list', { params: { pageNum: 1, pageSize: 100 } })
-      .then(res => {
-         const list = res.data || [];
+    // 🚀 核心：拉取真实的工序列表填充左侧组件库
+request.post('/process/list', { pageNum: 1, pageSize: 100 })
+  .then(res => {
+          const list = res.data || [];
          // 映射为画板需要的格式，并随机分配一个颜色
-         const library = list.map((item: any, index: number) => ({
-             id: item.processId,
-             name: item.processName,
-             type: '基础工序', 
-             color: COLORS[index % COLORS.length] 
-         }));
-         setProcessLibrary(library);
+          const library = list.map((item: any, index: number) => ({
+              id: item.processId,
+              name: item.processName,
+              type: '基础工序', 
+              color: COLORS[index % COLORS.length] 
+          }));
+          setProcessLibrary(library);
       })
       .catch(() => {
          // 柔性降级：请求失败则给一套 Mock 库
-         setProcessLibrary([
+          setProcessLibrary([
             { id: 'PROC-001', name: '毛坯制造 (Mock)', type: '成型工艺', color: '#1677FF' },
             { id: 'PROC-002', name: '精加工 (Mock)', type: '机械加工', color: '#FA8C16' }
-         ]);
+          ]);
       })
       .finally(() => setLibraryLoading(false));
   }, [routeId, setNodes, setEdges]);
@@ -146,21 +149,22 @@ const EditorCanvas: React.FC = () => {
   const handleSave = async () => {
     if (!routeId) return;
     
-    // 🛡️ 提交前的强校验：检查是不是所有的节点都选了模板！
     const invalidNodes = nodes.filter(n => !n.data.templateId);
     if (invalidNodes.length > 0) {
-      message.error(`有 ${invalidNodes.length} 个步骤未配置执行模板，请点击节点在右侧完成选择！`);
+      message.error(`有 ${invalidNodes.length} 个步骤未配置执行模板，请在右侧完成选择！`);
       return;
     }
 
     setLoading(true);
-    // 这里你的 service 里面已经有保存逻辑了，会将带 templateId 的 nodes 一起打包发给后端
-    await saveRouteConfig(routeId, nodes, edges);
-    message.success('工艺路线编排保存成功！所有的模板关联已生效。');
-    setLoading(false);
-    setTimeout(() => {
-      navigate(-1);
-    }, 800);
+    try {
+      await saveRouteConfig(routeId, nodes, edges);
+      message.success('工艺路线编排保存成功！所有的模板关联已生效。');
+      setTimeout(() => navigate(-1), 800);
+    } catch (error) {
+      message.error('保存失败，请打开 F12 查看具体的 400 字段错误');
+    } finally {
+      setLoading(false); // 无论成功失败，取消 loading
+    }
   };
 
   return (

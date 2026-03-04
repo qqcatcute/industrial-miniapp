@@ -10,13 +10,22 @@ interface DeviceKanbanProps {
 
 // 🚀 核心：恢复你的高级感配色，并映射后端的英文状态
 const STATUS_MAP: Record<string, { text: string; color: string }> = {
+  // 英文规范（新数据）
   'PLANNED': { text: '规划中', color: '#d9d9d9' },
   'INSTALLING': { text: '安装调试', color: '#1677ff' },
-  'IDLE': { text: '闲置', color: '#d4b106' },          // 你的原版原色
-  'RUNNING': { text: '运行中', color: '#13c2c2' },        // 你的原版原色
-  'MAINTENANCE': { text: '保养维护', color: '#1677ff' },  // 你的原版原色
-  'REPAIR': { text: '故障维修', color: '#ff7875' },       // 你的原版原色
-  'SCRAPPED': { text: '报废', color: '#d9d9d9' },         // 你的原版原色
+  'IDLE': { text: '闲置', color: '#d4b106' },
+  'RUNNING': { text: '运行中', color: '#13c2c2' },
+  'MAINTENANCE': { text: '保养维护', color: '#1677ff' },
+  'REPAIR': { text: '故障维修', color: '#ff7875' },
+  'SCRAPPED': { text: '报废', color: '#d9d9d9' },
+  // 🚀 核心修复：兼容以前存进去的中文脏数据，让它们也亮起来！
+  '规划中': { text: '规划中', color: '#d9d9d9' },
+  '安装调试': { text: '安装调试', color: '#1677ff' },
+  '闲置': { text: '闲置', color: '#d4b106' },
+  '运行中': { text: '运行中', color: '#13c2c2' },
+  '保养维护': { text: '保养维护', color: '#1677ff' },
+  '故障维修': { text: '故障维修', color: '#ff7875' },
+  '报废': { text: '报废', color: '#d9d9d9' },
 };
 
 const DeviceKanban: React.FC<DeviceKanbanProps> = ({ selectedLabelId }) => {

@@ -18,6 +18,7 @@ interface DeviceTableProps {
 }
 
 const STATUS_MAP: Record<string, { text: string; color: string }> = {
+  // 英文规范（新数据）
   'PLANNED': { text: '规划中', color: '#d9d9d9' },
   'INSTALLING': { text: '安装调试', color: '#1677ff' },
   'IDLE': { text: '闲置', color: '#d4b106' },
@@ -25,8 +26,25 @@ const STATUS_MAP: Record<string, { text: string; color: string }> = {
   'MAINTENANCE': { text: '保养维护', color: '#1677ff' },
   'REPAIR': { text: '故障维修', color: '#ff7875' },
   'SCRAPPED': { text: '报废', color: '#d9d9d9' },
+  // 🚀 核心修复：兼容以前存进去的中文脏数据，让它们也亮起来！
+  '规划中': { text: '规划中', color: '#d9d9d9' },
+  '安装调试': { text: '安装调试', color: '#1677ff' },
+  '闲置': { text: '闲置', color: '#d4b106' },
+  '运行中': { text: '运行中', color: '#13c2c2' },
+  '保养维护': { text: '保养维护', color: '#1677ff' },
+  '故障维修': { text: '故障维修', color: '#ff7875' },
+  '报废': { text: '报废', color: '#d9d9d9' },
 };
-
+const DEPRECIATION_MAP: Record<string, string> = {
+  'SLM': '年限平均法',
+  'UOP': '工作量法',
+  'DDB': '双倍余额递减法',
+  'SYD': '年数总和法',
+  'GDM': '组折旧法',
+  'CDM': '部件折旧法',
+  'ND': '不计提折旧',
+  'ODM': '其他折旧方式'
+};
 // ==========================================
 // 🚀 核心重构：内嵌的设备详情与备件 CRUD 管理台
 // ==========================================
@@ -85,10 +103,19 @@ const ExpandedDetail: React.FC<{ deviceId: string }> = ({ deviceId }) => {
   }
 
   // 备件表格的列定义
-  const spareColumns = [
+const spareColumns = [
     { title: '备件名称', dataIndex: 'sparePartName', key: 'sparePartName' },
     { title: '品牌', dataIndex: 'sparePartBrand', key: 'sparePartBrand' },
     { title: '规格型号', dataIndex: 'sparePartSpecificationModel', key: 'sparePartSpecificationModel' },
+    // 🚀 新增列：展示价格和存放位置
+    { 
+      title: '参考单价', 
+      dataIndex: 'sparePartPrice', 
+      key: 'sparePartPrice',
+      render: (val: any) => val ? `¥${val}` : '--'
+    },
+    { title: '存放库位', dataIndex: 'sparePartLocation', key: 'sparePartLocation' },
+    { title: '供应商', dataIndex: 'sparePartSupplier', key: 'sparePartSupplier' },
     { 
       title: '当前库存', 
       key: 'stock', 
@@ -126,6 +153,10 @@ const ExpandedDetail: React.FC<{ deviceId: string }> = ({ deviceId }) => {
             <ProFormText name="sparePartSpecificationModel" label="规格型号" />
             <ProFormDigit name="sparePartQuantity" label="数量" rules={[{ required: true }]} />
             <ProFormText name="sparePartUnit" label="单位" rules={[{ required: true }]} />
+            {/* 🚀 新增：编辑时的输入框 */}
+            <ProFormDigit name="sparePartPrice" label="参考单价(元)" fieldProps={{ precision: 2 }} />
+            <ProFormText name="sparePartLocation" label="存放库位" placeholder="如：A区-01货架" />
+            <ProFormText name="sparePartSupplier" label="供应商" />
           </ModalForm>
 
           <Popconfirm 
@@ -148,11 +179,26 @@ const ExpandedDetail: React.FC<{ deviceId: string }> = ({ deviceId }) => {
   return (
     <div style={{ padding: '16px 24px', background: '#fafbfc', border: '1px solid #f0f0f0', borderRadius: 4, margin: '8px 16px' }}>
       {/* 1. 基础与扩展信息面板 */}
+      {/* 1. 基础与扩展信息面板 */}
       <Descriptions title="📄 设备详细档案" size="small" column={3} bordered style={{ marginBottom: 24 }}>
+        <Descriptions.Item label="设备名称">{detail.deviceName || '--'}</Descriptions.Item>
+        <Descriptions.Item label="品牌">{detail.deviceBrand || '--'}</Descriptions.Item>
+        <Descriptions.Item label="规格型号">{detail.deviceSpecificationModel || '--'}</Descriptions.Item>
+        
         <Descriptions.Item label="生产厂家">{detail.deviceManufacturer || '--'}</Descriptions.Item>
+        <Descriptions.Item label="供应商">{detail.deviceSupplier || '--'}</Descriptions.Item>
         <Descriptions.Item label="出厂日期">{detail.deviceManufactureDate || '--'}</Descriptions.Item>
+        
         <Descriptions.Item label="设计使用年限">{detail.deviceLifespan ? `${detail.deviceLifespan} 年` : '--'}</Descriptions.Item>
+        {/* 翻译折旧方式 */}
+        <Descriptions.Item label="折旧方式">
+          {detail.deviceDepreciation ? (DEPRECIATION_MAP[detail.deviceDepreciation] || detail.deviceDepreciation) : '--'}
+        </Descriptions.Item>
+        <Descriptions.Item label="设备位置">{detail.deviceLocation || '--'}</Descriptions.Item>
+        
         <Descriptions.Item label="设备描述" span={3}>{detail.deviceDescription || '--'}</Descriptions.Item>
+        
+        {/* 动态渲染扩展技术参数 (赛题加分项 5分) */}
         {Object.entries(paramsObj).map(([key, value]) => (
           <Descriptions.Item label={key} key={key}>
             <span style={{ color: '#1677ff', fontWeight: 500 }}>{String(value)}</span>
@@ -184,6 +230,10 @@ const ExpandedDetail: React.FC<{ deviceId: string }> = ({ deviceId }) => {
           <ProFormText name="sparePartSpecificationModel" label="规格型号" placeholder="例如：7014C" />
           <ProFormDigit name="sparePartQuantity" label="初始数量" placeholder="输入数量" rules={[{ required: true }]} />
           <ProFormText name="sparePartUnit" label="单位" placeholder="例如：套、件" rules={[{ required: true }]} />
+          {/* 🚀 新增：新建时的输入框 */}
+          <ProFormDigit name="sparePartPrice" label="参考单价(元)" placeholder="输入单价" fieldProps={{ precision: 2 }} />
+          <ProFormText name="sparePartLocation" label="存放库位" placeholder="例如：A区-01货架" />
+          <ProFormText name="sparePartSupplier" label="供应商" placeholder="例如：上海五金交电公司" />
         </ModalForm>
       </div>
 
@@ -255,7 +305,7 @@ const DeviceTable: React.FC<DeviceTableProps> = ({ selectedLabelId, keyword,acti
           // 🚀 核心判断：如果有搜索词，走 Query 接口；没有，走普通 List 接口
           if (params.keyword) {
             return queryDevices({ 
-              queryType: 'deviceName', // 默认按名称查，也可以根据你的下拉框调整
+              queryType: 'name', // 默认按名称查，也可以根据你的下拉框调整
               keyword: params.keyword, 
               pageNum: params.current, 
               pageSize: params.pageSize 

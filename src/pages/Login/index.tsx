@@ -21,25 +21,24 @@ const LoginPage: React.FC = () => {
 
   // 获取验证码
 // 获取验证码 (增加 Mock 降级)
+// 获取验证码 (移除 Mock，拿不到就报错)
   const handleGetCode = async () => {
     const email = form.getFieldValue('email');
-    if (!email) {
-      return message.warning('请先输入邮箱地址');
-    }
+    if (!email) return message.warning('请先输入邮箱地址');
+    
     setCodeLoading(true);
     try {
       await request.get('/user/code', { params: { email } });
-      message.success('验证码已发送至您的邮箱');
+      message.success('验证码已发送至您的邮箱，请注意查收');
     } catch (error) {
-      // 👇 触发 Mock 降级：假装验证码发送成功
-      console.warn('⚠️ 后端未连接，触发获取验证码 Mock 降级');
-      message.success('【Mock】验证码已发送，请随意输入6位数字');
+      // 真实报错，不再给假提示
+      console.error('获取验证码失败', error);
     } finally {
       setCodeLoading(false);
     }
   };
 
-  // 提交表单 (登录/注册 - 增加 Mock 降级)
+  // 提交表单 (移除 Mock，完全依赖后端真实 Token)
   const onFinish = async (values: any) => {
     setLoading(true);
     try {
@@ -48,8 +47,8 @@ const LoginPage: React.FC = () => {
           email: values.email,
           password: values.password,
         });
-        const userToken = res.data || 'mock-token-for-frontend-only';
-        localStorage.setItem('authorization', userToken);
+        // 必须拿到真实 Token，拿不到就存空（但通常成功了 res.data 就是 token）
+        localStorage.setItem('authorization', res.data);
         message.success('登录成功');
         navigate('/');
       } else {
@@ -59,17 +58,13 @@ const LoginPage: React.FC = () => {
           password: values.password,
           inputCode: values.inputCode,
         });
-        const userToken = res.data || 'mock-token-for-frontend-only';
-        localStorage.setItem('authorization', userToken);
+        localStorage.setItem('authorization', res.data);
         message.success('注册成功，正在进入系统');
         navigate('/');
       }
     } catch (error) {
-      // 👇 触发 Mock 降级：无论后端报什么错，都强制写入假 Token 并跳入首页
-      console.warn('⚠️ 后端未连接，触发登录/注册 Mock 降级');
-      localStorage.setItem('authorization', 'mock-token-for-frontend-only');
-      message.success(`【Mock模式】${activeTab === 'login' ? '登录' : '注册'}成功`);
-      navigate('/');
+      // 🚨 移除了强制进入首页的假逻辑，密码错误就停留在登录页！
+      console.error('认证失败:', error);
     } finally {
       setLoading(false);
     }
@@ -92,7 +87,7 @@ const LoginPage: React.FC = () => {
       {/* 顶部 Logo 栏 */}
       <div style={{ padding: '24px 48px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontSize: 22, fontWeight: 900, color: '#001529', letterSpacing: 1 }}>
-          <span style={{ color: '#13c2c2' }}>ZHIHUI</span> GONG RUAN
+          <span style={{ color: '#13c2c2' }}>ZHIGONG</span> QING YI
         </div>
       </div>
 

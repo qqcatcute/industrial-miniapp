@@ -23,13 +23,13 @@ const mockLabels: DeviceLabel[] = [
 
 export const getDevices = async (params: { labelId?: string; current?: number; pageSize?: number }) => {
   try {
-    const res = await request.get('/device/list', {
-      params: { 
-        pageNum: params.current || 1, 
-        pageSize: params.pageSize || 10,
-        labelId: params.labelId === 'ALL' ? undefined : params.labelId 
-      }
+    // 🚀 核心修改：直接使用 request.post，Axios 会自动把第二个参数放进 Body
+    const res = await request.post('/device/list', {
+      pageNum: params.current || 1, 
+      pageSize: params.pageSize || 10,
+      labelId: params.labelId === 'ALL' ? undefined : params.labelId 
     });
+    
     return { data: res.data || [], total: res.data?.length || 0, success: true };
   } catch (error) {
     console.warn('⚠️ 触发 [获取设备列表] 柔性降级');
@@ -49,10 +49,17 @@ export const getDeviceDetail = async (deviceId: string): Promise<Device> => {
 
 export const addDevice = async (newDevice: Device) => {
   try {
-    const res = await request.post('/device/create', newDevice);
+    // 🚀 1. 优雅解构：剥离出 deviceId，把剩下的所有属性装进 payload，完美避开 delete 报错
+    const { deviceId, ...payload } = newDevice; 
+    
+    // 🚀 2. 声明 res 类型为 any，接管 Axios 默认推断，并在请求体中传入剥离后的 payload
+    const res: any = await request.post('/device/create', payload);
+    
+    // 🚀 3. 根据接口文档，成功时返回的结构包含 data.deviceId
     return res.data?.deviceId || res.data; 
-  } catch (e) {
-    console.warn('⚠️ 触发 [新增设备] 柔性降级');
+  } catch (error) {
+    // 🚀 4. 将 e 改为 error 并打印出来，消除 unused 警告，也方便排查问题
+    console.warn('⚠️ 触发 [新增设备] 柔性降级', error);
     return `MOCK-DEVICE-${Date.now()}`;
   }
 };
@@ -141,10 +148,14 @@ export const addDeviceLabel = async (params: { deviceLabelName: string; deviceLa
   }
 };
 
-// 🚀 新增：修改设备标签
-export const updateDeviceLabel = async (labelId: string, params: { labelName: string; labelParentId?: string; deviceLabelHierarchical: number }) => {
+
+export const updateDeviceLabel = async (labelId: string, params: { deviceLabelName: string; labelParentId?: string; deviceLabelHierarchical: number }) => {
   try {
-    await request.post(`/deviceLabel/update/${labelId}`, params);
+    // 💡 修复：将 labelId 也放入请求体，同时迎合后端真实的字段名 deviceLabelName
+    await request.post(`/deviceLabel/update/${labelId}`, {
+      labelId: labelId,
+      ...params
+    });
     return true;
   } catch (e) {
     console.warn('⚠️ 触发 [修改标签] 柔性降级');
@@ -177,26 +188,67 @@ export const unbindDeviceLabel = async (deviceId: string, labelId: string) => {
 // ==========================================
 // 🔧 3. 备品备件接口 (SparePart) - 重点重构区
 // ==========================================
-
-// 🔄 拦截器：抹平后端大驼峰 (PascalCase) 到前端小驼峰 (camelCase) 的差异
+// 🔄 拦截器：抹平后端大驼峰到前端小驼峰的差异，同时接收所有扩展字段
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapToFrontendSparePart = (data: any): SparePart => ({
-  id: data.SparePartId || data.id,
-  sparePartName: data.SparePartName,
-  sparePartBrand: data.SparePartBrand,
-  sparePartSpecificationModel: data.SparePartSpecificationModel,
-  sparePartQuantity: data.SparePartQuantity,
-  sparePartUnit: data.SparePartUnit,
-});
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapToFrontendSparePart = (data: any): SparePart => {
+  // 💡 核心修复 1：海纳百川，兼容后端返回的各种奇葩 ID 命名
+  const actualId = data.sparePartId || data.SparePartId || data.id; 
+  
+  return {
+    id: actualId, // 必须有 id，Antd 的 Table rowKey 强依赖它
+    sparePartName: data.sparePartName || data.SparePartName,
+    sparePartBrand: data.sparePartBrand || data.SparePartBrand,
+    sparePartSpecificationModel: data.sparePartSpecificationModel || data.SparePartSpecificationModel,
+    sparePartQuantity: data.sparePartQuantity || data.SparePartQuantity,
+    sparePartUnit: data.sparePartUnit || data.SparePartUnit,
+    sparePartPrice: data.sparePartPrice || data.SparePartPrice || 0,
+    sparePartLocation: data.sparePartLocation || data.SparePartLocation || '默认仓库',
+    sparePartSupplier: data.sparePartSupplier || data.SparePartSupplier || '默认供应商',
+  };
+};
 
-const mapToBackendSparePart = (data: Partial<SparePart>) => ({
-  SparePartName: data.sparePartName,
-  SparePartBrand: data.sparePartBrand,
-  SparePartSpecificationModel: data.sparePartSpecificationModel,
-  SparePartQuantity: data.sparePartQuantity,
-  SparePartUnit: data.sparePartUnit,
-});
+// 🚀 拦截器 (后端发送)：彻底拥抱小驼峰
+// 🚀 1. 纯净版拦截器：只管转换 Body 数据，不再强行塞入 ID
+const mapToBackendSparePart = (data: Partial<SparePart>) => {
+  return {
+    sparePartName: data.sparePartName,
+    sparePartBrand: data.sparePartBrand,
+    sparePartSpecificationModel: data.sparePartSpecificationModel,
+    sparePartQuantity: data.sparePartQuantity,
+    sparePartUnit: data.sparePartUnit,
+    // 保留这三个扩展字段，因为之前联调已经证实后端接收小驼峰
+    sparePartPrice: data.sparePartPrice || 0,
+    sparePartLocation: data.sparePartLocation || '默认仓库',
+    sparePartSupplier: data.sparePartSupplier || '默认供应商',
+  };
+};
 
+// 🚀 2. 恢复你原先正确的写法：deviceId 放在 params 里拼接到 URL 后面
+export const addDeviceSparePart = async (deviceId: string, sparePartData: Partial<SparePart>) => {
+  try {
+    await request.post('/deviceSparePart/create', mapToBackendSparePart(sparePartData), {
+      params: { deviceId } 
+    });
+    return true;
+  } catch (e) {
+    console.warn('⚠️ 触发 [新增备件] 柔性降级');
+    return true; 
+  }
+};
+
+// 🚀 3. 恢复你原先正确的写法：sparePartId 放在 params 里拼接到 URL 后面
+export const updateDeviceSparePart = async (sparePartId: string, sparePartData: Partial<SparePart>) => {
+  try {
+    await request.put('/deviceSparePart/update', mapToBackendSparePart(sparePartData), {
+      params: { sparePartId }
+    });
+    return true;
+  } catch (e) {
+    console.warn('⚠️ 触发 [更新备件] 柔性降级');
+    return true;
+  }
+};
 // 🚀 新增：分页查询指定设备的备件列表
 export const getDeviceSpareParts = async (deviceId: string, pageNum = 1, pageSize = 10) => {
   try {
@@ -209,32 +261,6 @@ export const getDeviceSpareParts = async (deviceId: string, pageNum = 1, pageSiz
   } catch (error) {
     console.warn(`⚠️ 触发 [获取备件列表] 柔性降级: 所属设备 ${deviceId}`);
     return { data: mockSpareParts, total: mockSpareParts.length, success: true };
-  }
-};
-
-// 🚀 新增：创建备件
-export const addDeviceSparePart = async (deviceId: string, sparePartData: Partial<SparePart>) => {
-  try {
-    await request.post('/deviceSparePart/create', mapToBackendSparePart(sparePartData), {
-      params: { deviceId } 
-    });
-    return true;
-  } catch (e) {
-    console.warn('⚠️ 触发 [新增备件] 柔性降级');
-    return true;
-  }
-};
-
-// 🚀 新增：修改备件
-export const updateDeviceSparePart = async (sparePartId: string, sparePartData: Partial<SparePart>) => {
-  try {
-    await request.put('/deviceSparePart/update', mapToBackendSparePart(sparePartData), {
-      params: { sparePartId }
-    });
-    return true;
-  } catch (e) {
-    console.warn('⚠️ 触发 [更新备件] 柔性降级');
-    return true;
   }
 };
 

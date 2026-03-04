@@ -27,11 +27,14 @@ const DeviceManage: React.FC = () => {
 
   const handleSubmit = async (values: Device) => {
     let success = false;
-    let currentDeviceId = values.deviceId; 
-    const isEditMode = !!currentDeviceId; // 判断是新增还是编辑
+    
+    // 🚀 核心修复 1：表单 disabled 字段会被丢弃，必须用 currentRow 里的真 ID 来判断！
+    const isEditMode = !!currentRow?.deviceId; 
+    let currentDeviceId = isEditMode ? currentRow!.deviceId : undefined;
 
     if (isEditMode) {
-        success = await updateDevice(currentDeviceId, values);
+        // 编辑时，把 currentDeviceId 传过去
+        success = await updateDevice(currentDeviceId!, values);
     } else {
         const newId = await addDevice(values);
         if (newId) {
@@ -41,23 +44,19 @@ const DeviceManage: React.FC = () => {
     }
 
     if (success && currentDeviceId) {
-      // 🚀 核心逻辑：智能对比并处理 Bind / Unbind
       const newLabelIds = values.labelIds || [];
-      // 如果是编辑模式，获取它原本绑定的旧标签 (如果 currentRow 没记录，默认为空数组)
       const oldLabelIds = isEditMode ? (currentRow?.labelIds || []) : [];
 
-      // 1. 找出需要【新增绑定】的标签 (新的有，旧的没有)
       const toBind = newLabelIds.filter(id => !oldLabelIds.includes(id));
-      // 2. 找出需要【解除绑定】的标签 (旧的有，新的没有)
       const toUnbind = oldLabelIds.filter(id => !newLabelIds.includes(id));
 
-      // 并发执行绑定和解绑请求
       const promises: Promise<any>[] = [];
-      toBind.forEach(labelId => promises.push(bindDeviceLabel(currentDeviceId, labelId)));
-      toUnbind.forEach(labelId => promises.push(unbindDeviceLabel(currentDeviceId, labelId)));
+      toBind.forEach(labelId => promises.push(bindDeviceLabel(currentDeviceId!, labelId)));
+      toUnbind.forEach(labelId => promises.push(unbindDeviceLabel(currentDeviceId!, labelId)));
       
       await Promise.all(promises);
 
+      // 🚀 核心修复 2：成功后关闭抽屉，并触发真实刷新
       setDrawerVisible(false);
       tableActionRef.current?.reload(); 
       return true;
@@ -74,7 +73,7 @@ const DeviceManage: React.FC = () => {
           <Segmented options={['全部状态', '运行中', '维修中']} defaultValue="全部状态"/>
         </Space>
       }
-      searchPlaceholder="输入设备名称模糊搜索..."
+      searchPlaceholder="输入设备编码或名称模糊搜索..."
       // 🚀 假设你的 ContentShell 支持 onSearch 回调，将关键字存入状态并刷新表格
       onSearch={(val) => {
         setKeyword(val);
@@ -143,7 +142,11 @@ const DeviceManage: React.FC = () => {
                 actionRef={tableActionRef} 
                 onEdit={async (record) => {
                   const fullDetail = await getDeviceDetail(record.deviceId);
-                  setCurrentRow(fullDetail);
+                  // 🚨 核心修复：因为后端 detail 接口不返回 deviceId，所以必须手动把外面列表里的 deviceId 拼进去！
+                  setCurrentRow({ 
+                    ...fullDetail, 
+                    deviceId: record.deviceId 
+                  });
                   setDrawerVisible(true);
                 }}
                 rowSelection={{

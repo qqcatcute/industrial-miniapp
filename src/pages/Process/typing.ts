@@ -1,26 +1,26 @@
 // src/pages/Process/typing.ts
 
 export interface Process {
-  processId: string;   // 对应后端 processId
-  processName: string; // 工序名称
+  processId: string;   
+  processName: string; 
+  labelIds?: string[]; // 🚀 核心纠正：将分类标签数组挂载到工序大类上
   
-  // 🚀 前端特有扩展：在列表查询时聚合进来的模板列表
   templates?: ProcessTemplate[]; 
 }
 
 export interface ProcessTemplate {
   templateId: string;
   processId: string;
-  templateName: string; // 模板名称
-  templateDescription?: string; // 模板描述
+  templateName: string; 
+  templateDescription?: string; 
   startTime?: string;
   endTime?: string;
   
   // --- 🚀 偷渡字段（通过 inputJson 存储与解析） ---
-  productionSteps?: string; // 生产步骤
-  equipments?: string;      // 生产和检测设备
-  operator?: string;        // 操作人员 (岗位要求)
-  labelIds?: string[];      // 关联的工序类型标签 ID 数组
+  productionSteps?: string; 
+  equipments?: string;      
+  operator?: string;        
+  // ⛔️ labelIds 已从此处移除，不再让模板层级关心分类
 }
 
 export interface ProcessLabel {

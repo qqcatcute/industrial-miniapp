@@ -17,22 +17,7 @@ interface MaterialFormDrawerProps {
 const titleMap = { create: '新建物料', edit: '编辑物料', upgrade: '物料升版修订' };
 
 const MaterialFormDrawer: React.FC<MaterialFormDrawerProps> = ({ visible, onVisibleChange, onSuccess, defaultLabelId, mode, record }) => {
-  const [treeData, setTreeData] = useState<any[]>([]);
   const [form] = Form.useForm();
-
-  useEffect(() => {
-    const fetchTree = async () => {
-      const data = await getMaterialLabels();
-      const formatTree = (nodes: MaterialLabel[]): any[] => {
-        return nodes.map(node => ({
-          label: node.labelName, value: node.labelId,
-          children: node.children?.length ? formatTree(node.children) : undefined,
-        }));
-      };
-      setTreeData(formatTree(data));
-    };
-    fetchTree();
-  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -70,8 +55,12 @@ const MaterialFormDrawer: React.FC<MaterialFormDrawerProps> = ({ visible, onVisi
         if (mode === 'edit' && currentMaterialId) {
           success = await updateMaterial(currentMaterialId, submitData);
         } else if (mode === 'upgrade') {
-          const newId = await reviseAndUpdateMaterial({ ...submitData, masterId: record?.masterId }); 
-          if (newId) { currentMaterialId = newId; success = true; }
+          // 🚀 核心修复：直接把 await 的结果（true/false）赋给 success，不再判断 newId
+          success = await reviseAndUpdateMaterial({ 
+            ...submitData, 
+            masterId: record?.masterId,
+            materialId: currentMaterialId 
+          }); 
         } else {
           const newId = await addMaterial(submitData);
           if (newId) { currentMaterialId = newId; success = true; }
@@ -101,15 +90,77 @@ const MaterialFormDrawer: React.FC<MaterialFormDrawerProps> = ({ visible, onVisi
       }}
     >
       <ProFormText name="materialName" label="物料名称" colProps={{ span: 12 }} rules={[{ required: true }]} />
-      <ProFormTreeSelect name="materialLabel" label="所属分类" colProps={{ span: 12 }} request={async () => treeData} placeholder="如果不选，物料将在'全部物料'中展示" />
-      <ProFormText name="materialSpecificationModel" label="规格型号" colProps={{ span: 12 }} rules={[{ required: true }]} />
+      <ProFormTreeSelect 
+        name="materialLabel" 
+        label="所属分类" 
+        colProps={{ span: 12 }} 
+        // ✅ 核心修复：直接让 request 掌管数据获取，自动处理 loading 和匹配时序
+        request={async () => {
+          const data = await getMaterialLabels();
+          const formatTree = (nodes: MaterialLabel[]): any[] => {
+            return nodes.map(node => ({
+              title: node.labelName, // 💡 重点：TreeSelect 默认识别 title 而不是 label
+              value: node.labelId,
+              children: node.children?.length ? formatTree(node.children) : undefined,
+            }));
+          };
+          return formatTree(data);
+        }}
+        placeholder="如果不选，物料将在'全部物料'中展示" 
+      />
+      {/* 🚀 核心修复：把丢失的规格型号加回来！ */}
+      <ProFormText 
+        name="materialSpecificationModel" 
+        label="规格型号" 
+        colProps={{ span: 12 }} 
+        rules={[{ required: true, message: '请输入规格型号' }]} 
+      />
       <ProFormText name="materialSupplier" label="供应商" colProps={{ span: 12 }} rules={[{ required: true }]} />
       <ProFormDigit name="materialQuantity" label="库存数量" colProps={{ span: 12 }} min={0} fieldProps={{ precision: 4 }} rules={[{ required: true }]} />
       <ProFormSelect
-        name="materialUnit" label="库存单位" colProps={{ span: 12 }}
-        options={[{ label: '件', value: '件' }, { label: '台', value: '台' }, { label: '个', value: '个' }, { label: '吨', value: '吨' }]}
-        rules={[{ required: true }]}
-      />
+  name="materialUnit" 
+  label="库存单位" 
+  colProps={{ span: 12 }}
+  showSearch // 建议开启搜索，选项多了方便用户快速查找
+  options={[
+    // --- 数量/机械类 ---
+    { label: '件', value: '件' },
+    { label: '个', value: '个' },
+    { label: '台', value: '台' },
+    { label: '套', value: '套' },
+    { label: '根', value: '根' },
+    { label: '支', value: '支' },
+    { label: '把', value: '把' },
+    { label: '片', value: '片' },
+    { label: '块', value: '块' },
+    { label: '只', value: '只' },
+    { label: '双', value: '双' },
+
+    // --- 重量类 ---
+    { label: '千克 (kg)', value: '千克' },
+    { label: '克 (g)', value: '克' },
+    { label: '吨 (t)', value: '吨' },
+    
+    // --- 长度/面积类 ---
+    { label: '米 (m)', value: '米' },
+    { label: '厘米 (cm)', value: '厘米' },
+    { label: '毫米 (mm)', value: '毫米' },
+    { label: '平方米 (㎡)', value: '平方米' },
+
+    // --- 体积/容积/流体类 (常用于润滑油、切削液等) ---
+    { label: '升 (L)', value: '升' },
+    { label: '毫升 (mL)', value: '毫升' },
+    { label: '立方米 (m³)', value: '立方米' },
+
+    // --- 包装形态类 ---
+    { label: '箱', value: '箱' },
+    { label: '包', value: '包' },
+    { label: '卷', value: '卷' },
+    { label: '桶', value: '桶' },
+    { label: '批', value: '批' },
+  ]}
+  rules={[{ required: true, message: '请选择库存单位' }]}
+/>
       <ProFormTextArea name="materialDescription" label="物料描述" colProps={{ span: 24 }} fieldProps={{ rows: 3 }} />
     </DrawerForm>
   );

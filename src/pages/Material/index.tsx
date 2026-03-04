@@ -1,6 +1,6 @@
 // src/pages/Material/index.tsx
 import React, { useState } from 'react';
-import { Button, message, Spin } from 'antd';
+import { Button, message, Spin, Popconfirm } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import ContentShell from '@/components/ContentShell';
 import MaterialTree from './components/MaterialTree';
@@ -8,13 +8,17 @@ import MaterialTable from './components/MaterialTable';
 import MaterialDrawer from './components/MaterialDrawer';
 import MaterialFormDrawer from './components/MaterialFormDrawer';
 import { Material } from './typing';
-import { getMaterialDetail } from './service';
+import { getMaterialDetail, deleteMaterials } from './service';
 
 const MaterialManagement: React.FC = () => {
   const [selectedLabelId, setSelectedLabelId] = useState<string>('NULL');
   
+// 👇 1. 新增：搜索框关键字状态
+  const [keyword, setKeyword] = useState<string>('');
+  
   // 💡 用于强制触发表格刷新的 Key
   const [refreshKey, setRefreshKey] = useState<number>(0);
+
 
   // 详情抽屉状态
   const [detailVisible, setDetailVisible] = useState(false);
@@ -28,7 +32,9 @@ const MaterialManagement: React.FC = () => {
   
 // 💡 新增：抽屉全局 Loading 状态
   const [loadingDetail, setLoadingDetail] = useState(false);
-
+// 🚀 新增：用于存储表格勾选状态
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [selectedRows, setSelectedRows] = useState<Material[]>([]);
   // 💡 核心改造：点击查看时，先拉取完整详情再打开抽屉
   const handleViewDetail = async (record: Material, tabKey: string = '1') => {
     // 先打开抽屉，展示 Loading
@@ -52,9 +58,34 @@ const MaterialManagement: React.FC = () => {
     <ContentShell
       breadcrumbItems={[{ title: '数据管理' }, { title: '物料与 BOM 管理' }]}
       title="物料档案"
-      searchPlaceholder="输入物料编码或供应商模糊搜索..."
+      searchPlaceholder="输入物料编码或名称或规格型号模糊搜索..."
+      // 👇 2. 新增：接收用户的搜索输入并保存到状态中
+      onSearch={(val) => {
+        setKeyword(val);
+      }}
       actions={[
-        <Button key="delete" danger icon={<DeleteOutlined />}>批量删除</Button>,
+        // 🚀 替换：顶部的红色批量删除按钮活过来了！
+        <Popconfirm 
+          key="delete" 
+          title="危险：确认批量删除？"
+          description={`您确定要彻底销毁选中的 ${selectedRowKeys.length} 个物料族及其所有历史版本吗？`}
+          disabled={selectedRowKeys.length === 0}
+          onConfirm={async () => {
+            // 从选中的行中提取出 masterId 并去重
+            const masterIds = selectedRows.map(row => row.masterId);
+            const uniqueMasterIds = Array.from(new Set(masterIds));
+            
+            const success = await deleteMaterials(uniqueMasterIds);
+            if (success) {
+              message.success(`成功销毁 ${uniqueMasterIds.length} 个物料族`);
+              setSelectedRowKeys([]); // 清空勾选
+              setSelectedRows([]);
+              setRefreshKey(prev => prev + 1); // 刷新表格
+            }
+          }}
+        >
+          <Button danger icon={<DeleteOutlined />} disabled={selectedRowKeys.length === 0}>批量删除</Button>
+        </Popconfirm>,
         <Button 
           key="create" 
           type="primary" 
@@ -80,6 +111,7 @@ const MaterialManagement: React.FC = () => {
         <div style={{ flex: 1, minWidth: 0, background: '#fff', padding: '0 16px' }}>
           <MaterialTable 
             labelId={selectedLabelId} 
+            keyword={keyword}
             refreshKey={refreshKey} // 💡 完美传入
             onViewDetail={handleViewDetail} 
             onEdit={(record) => {
@@ -91,6 +123,13 @@ const MaterialManagement: React.FC = () => {
               setDrawerMode('upgrade');
               setCurrentRecord(record);
               setFormVisible(true);
+            }}
+            rowSelection={{
+              selectedRowKeys,
+              onChange: (keys: React.Key[], rows: Material[]) => {
+                setSelectedRowKeys(keys);
+                setSelectedRows(rows);
+              },
             }}
           />
         </div>

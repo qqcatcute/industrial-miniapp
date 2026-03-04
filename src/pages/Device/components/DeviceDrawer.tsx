@@ -39,11 +39,12 @@ const DeviceDrawer: React.FC<DeviceDrawerProps> = ({ visible, onVisibleChange, i
     } catch{ return []; }
   };
 
-  const formInitialValues = {
+const formInitialValues = {
     ...initialValues,
     deviceParameterList: processInitialParameters(),
-    deviceStatus: initialValues?.deviceStatus || '规划中',
-    deviceDepreciation: initialValues?.deviceDepreciation || '年限平均法'
+    // 🚀 改为正确的后端枚举值
+    deviceStatus: initialValues?.deviceStatus || 'PLANNED', 
+    deviceDepreciation: initialValues?.deviceDepreciation || 'SLM'
   };
 
   return (
@@ -67,8 +68,15 @@ const DeviceDrawer: React.FC<DeviceDrawerProps> = ({ visible, onVisibleChange, i
           }
         });
 
+        // 🚀 核心修复：如果只有日期没有时分秒，手动补齐，迎合后端的日期校验
+        let formattedDate = values.deviceManufactureDate;
+        if (formattedDate && formattedDate.length === 10) {
+            formattedDate = `${formattedDate} 00:00:00`;
+        }
+
         const submitData: Partial<FormValues> = {
           ...values,
+          deviceManufactureDate: formattedDate, // 替换为格式化后的日期
           deviceParameter: JSON.stringify(finalParams)
         };
 
@@ -89,17 +97,41 @@ const DeviceDrawer: React.FC<DeviceDrawerProps> = ({ visible, onVisibleChange, i
       <Divider orientation="left" style={{ marginTop: 0, marginBottom: 16, borderColor: '#e8e8e8' }}>
         <span style={{ fontSize: 16, fontWeight: 600, color: '#001529' }}>基础档案</span>
       </Divider>
-      <ProFormText name="deviceId" label="设备编码" colProps={{ span: 12 }} rules={[{ required: true }]} disabled={isEdit} />
+      {isEdit && (
+  <ProFormText name="deviceId" label="设备编码" colProps={{ span: 12 }} disabled />
+)}
       <ProFormText name="deviceName" label="设备名称" colProps={{ span: 12 }} rules={[{ required: true }]} />
-      <ProFormSelect name="deviceDepreciation" label="折旧方式" colProps={{ span: 12 }} rules={[{ required: true }]} options={[{ label: '年限平均法', value: '年限平均法' }, { label: '工作量法', value: '工作量法' }, { label: '双倍余额递减法', value: '双倍余额递减法' }, { label: '不计提折旧', value: '不计提折旧' }]} />
-      <ProFormSelect name="deviceStatus" label="设备状态" colProps={{ span: 12 }} rules={[{ required: true }]} options={[{ label: '规划中', value: '规划中' }, { label: '安装调试', value: '安装调试' }, { label: '运行中', value: '运行中' }, { label: '闲置', value: '闲置' }]} />
+      <ProFormSelect 
+        name="deviceDepreciation" 
+        label="折旧方式" 
+        colProps={{ span: 12 }} 
+        rules={[{ required: true }]} 
+        options={[
+          { label: '年限平均法', value: 'SLM' }, 
+          { label: '工作量法', value: 'UOP' }, 
+          { label: '双倍余额递减法', value: 'DDB' }, 
+          { label: '不计提折旧', value: 'ND' }
+        ]} 
+      />
+      <ProFormSelect 
+        name="deviceStatus" 
+        label="设备状态" 
+        colProps={{ span: 12 }} 
+        rules={[{ required: true }]} 
+        options={[
+          { label: '规划中', value: 'PLANNED' }, 
+          { label: '安装调试', value: 'INSTALLING' }, 
+          { label: '运行中', value: 'RUNNING' }, 
+          { label: '闲置', value: 'IDLE' }
+        ]} 
+      />
       <ProFormText name="deviceManufacturer" label="生产厂家" colProps={{ span: 12 }} />
       <ProFormText name="deviceBrand" label="品牌" colProps={{ span: 12 }} />
       <ProFormText name="deviceSpecificationModel" label="规格型号" colProps={{ span: 12 }} rules={[{ required: true }]} />
       <ProFormText name="deviceSupplier" label="供应商" colProps={{ span: 12 }} rules={[{ required: true }]} />
       <ProFormText name="deviceLocation" label="设备位置" colProps={{ span: 12 }} rules={[{ required: true }]} />
       <ProFormDatePicker name="deviceManufactureDate" label="生产日期" colProps={{ span: 12 }} width="100%" />
-      <ProFormDigit name="deviceServiceLife" label="使用年限(年)" colProps={{ span: 12 }} min={0} fieldProps={{ precision: 2 }} />
+      <ProFormDigit name="deviceLifespan" label="使用年限(年)" colProps={{ span: 12 }} min={0} fieldProps={{ precision: 2 }} />
       <ProFormTreeSelect
         name="labelIds"
         label="所属分类标签"

@@ -1,7 +1,9 @@
 // src/pages/Route/components/RouteDrawer.tsx
-import React, { useEffect } from 'react';
-import { Drawer, Form, Input, Select, Button, Space, message, Divider } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Drawer, Form, Input, Select, Button, Space, message, Divider, Spin } from 'antd';
 import { Route } from '../typing';
+import { saveRouteBaseInfo } from '../service';
+import request from '@/utils/request'; // 👈 1. 引入封装好的请求工具
 
 interface RouteDrawerProps {
   open: boolean;
@@ -12,6 +14,10 @@ interface RouteDrawerProps {
 
 const RouteDrawer: React.FC<RouteDrawerProps> = ({ open, onClose, onSuccess, currentRecord }) => {
   const [form] = Form.useForm();
+  
+  // 👈 2. 新增状态：存储物料列表和加载状态
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [loadingMaterials, setLoadingMaterials] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -22,16 +28,35 @@ const RouteDrawer: React.FC<RouteDrawerProps> = ({ open, onClose, onSuccess, cur
         form.resetFields();
         form.setFieldsValue({ version: '1.0' }); 
       }
+
+      // 👈 3. 每次打开抽屉时，去后台拉取最新的真实物料列表
+      setLoadingMaterials(true);
+      // 注意：接口文档中获取物料列表是 POST 请求
+      request.post('/material/list', { pageNum: 1, pageSize: 500 })
+        .then(res => {
+          setMaterials(res.data || []);
+        })
+        .catch(() => {
+          // 柔性降级或者忽略，因为 request 拦截器已经报过错了
+          console.warn('获取物料下拉列表失败');
+        })
+        .finally(() => {
+          setLoadingMaterials(false);
+        });
     }
   }, [open, currentRecord, form]);
 
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      console.log('发给后端的工艺路线(WorkingPlan)数据:', values);
-      message.success('工艺路线保存成功！请前往图形化编排配置工序与设备/物料关系。');
+      // 发起真实网络请求 (传入表单数据和当前编辑的 ID)
+      await saveRouteBaseInfo({ ...values, id: currentRecord?.id });
+      
+      message.success('工艺路线基础档案保存成功！请点击图形化编排设计工序。');
       onSuccess();
-    } catch (error) {}
+    } catch (error) {
+      // Form校验失败拦截
+    }
   };
 
   return (
@@ -51,10 +76,22 @@ const RouteDrawer: React.FC<RouteDrawerProps> = ({ open, onClose, onSuccess, cur
         </Form.Item>
 
         <div style={{ display: 'flex', gap: '16px' }}>
-          <Form.Item name="materialId" label="所属产品 (目标物料)" style={{ flex: 2 }} rules={[{ required: true }]}>
-            <Select placeholder="请选择目标产品">
-              <Select.Option value="MAT-001">中心轮毛坯</Select.Option>
-            </Select>
+          {/* 👇 4. 核心改造：完全动态渲染下拉框，并加上 Loading 和友好提示 */}
+          <Form.Item name="materialId" label="所属产品 (目标物料)" style={{ flex: 2 }} rules={[{ required: true, message: '必须指定产出物料' }]}>
+            <Select 
+              placeholder="请选择目标产品" 
+              loading={loadingMaterials}
+              notFoundContent={loadingMaterials ? <Spin size="small" /> : '暂无可用物料，请先去物料管理添加'}
+              showSearch // 开启搜索功能，方便物料多的时候查找
+              filterOption={(input, option) =>
+                (option?.label as string ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              options={materials.map(m => ({
+                value: m.materialId, // 传给后端真实的物料 ID
+                // 拼接物料名称和型号，显得更专业
+                label: `${m.materialName} ${m.materialSpecificationModel ? `(${m.materialSpecificationModel})` : ''}`
+              }))}
+            />
           </Form.Item>
           
           <Form.Item name="version" label="工艺版本" style={{ flex: 1 }} rules={[{ required: true }]}>
@@ -77,7 +114,7 @@ const RouteDrawer: React.FC<RouteDrawerProps> = ({ open, onClose, onSuccess, cur
           <Input placeholder="例如：单件加工总操作时间 12 小时" />
         </Form.Item>
 
-        <Form.Item name="equipmentStatus" label="设备使用情况 / 产线占用预估">
+        <Form.Item name="equipments" label="设备使用情况 / 产线占用预估">
           <Input.TextArea rows={2} placeholder="例如：需统筹协调卧式数控车床、三坐标测量机等设备" />
         </Form.Item>
 

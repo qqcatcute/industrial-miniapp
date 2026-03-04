@@ -1,25 +1,12 @@
+// src/pages/Dashboard/index.tsx
 import React, { useEffect, useState } from 'react';
 import { 
-  Statistic, 
-  Row, 
-  Col, 
-  Button, 
-  Space, 
-  Typography, 
-  Tag, 
-  Progress,
-  Spin, 
-  Card,
-  theme
+  Statistic, Row, Col, Button, Space, Typography, Tag, Progress,
+  Spin, theme
 } from 'antd';
 import { 
-  DatabaseOutlined, 
-  GoldOutlined, 
-  PartitionOutlined, 
-  ThunderboltOutlined,
-  CheckCircleFilled,
-  RightOutlined,
-  ArrowRightOutlined
+  DatabaseOutlined, GoldOutlined, PartitionOutlined, ThunderboltOutlined,
+  CheckCircleFilled, ArrowRightOutlined
 } from '@ant-design/icons';
 import { ProCard } from '@ant-design/pro-components';
 import ContentShell from '@/components/ContentShell'; 
@@ -29,23 +16,22 @@ import { useNavigate } from 'react-router-dom';
 
 const { Text } = Typography; 
 
-// --- 定义一套和谐的配色 (Tech Harmony Palette) ---
 const COLORS = {
-  running: '#13c2c2', // 科技青：清爽、现代，代替刺眼的绿色
-  idle: '#d4b106',    // 沉稳金：代替亮黄色，稍微暗一点
-  fault: '#ff7875',   // 柔和红：警示但不刺眼
-  primary: '#1677FF', // 品牌蓝
-  bgCard: '#f7f9fc'   // 极淡的灰蓝背景
+  running: '#13c2c2',    // 科技青 (运行中)
+  idle: '#ffc53d',       // 活泼明黄 (闲置) - 替换了原来的 #d4b106
+  installing: '#1677FF', // 品牌蓝 (安装调试) - 对应看板的蓝色
+  fault: '#ff7875',      // 柔和红 (故障/报警) - 保留原有的红色
+  primary: '#1677FF',    // 全局主色
+  bgCard: '#f7f9fc'      // 极淡的灰蓝背景
 };
 
-// --- 修复后的 SimplePieChart ---
 const SimplePieChart = ({ data }: { data: { value: number; color: string; name: string }[] }) => {
   const total = data.reduce((acc, cur) => acc + cur.value, 0);
   
   const segments = data.map((item, index, arr) => {
     const previousValueSum = arr.slice(0, index).reduce((a, b) => a + b.value, 0);
-    const percentage = (item.value / total) * 100;
-    const offset = -(previousValueSum / total) * 100;
+    const percentage = total > 0 ? (item.value / total) * 100 : 0;
+    const offset = total > 0 ? -(previousValueSum / total) * 100 : 0;
     
     return {
       ...item,
@@ -71,6 +57,8 @@ const SimplePieChart = ({ data }: { data: { value: number; color: string; name: 
             style={{ transition: 'all 0.3s' }}
           />
         ))}
+        {/* 如果总数为 0，给个灰色底圈兜底 */}
+        {total === 0 && <circle r="16" cx="16" cy="16" fill="transparent" stroke="#f0f0f0" strokeWidth="32" />}
         <circle r="11" cx="16" cy="16" fill="#fff" />
       </svg>
       <div style={{
@@ -91,7 +79,7 @@ const Dashboard: React.FC = () => {
   
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardStats>({
-    deviceTotal: 0, deviceRunning: 0, deviceFault: 0, deviceIdle: 0,
+    deviceTotal: 0, deviceRunning: 0, deviceInstalling: 0, deviceIdle: 0, // 🌟 2. 初始状态同步修改
     materialWarningCount: 0, routeTotal: 0
   });
 
@@ -116,14 +104,16 @@ const Dashboard: React.FC = () => {
     { title: '工艺编排', icon: <PartitionOutlined />, path: '/route', desc: '路线设计' },
   ];
 
+  // 计算百分比安全函数，防止 NaN
+  const safePercent = (val: number, total: number) => total > 0 ? Math.round((val / total) * 100) : 0;
+
   return (
     <ContentShell
       breadcrumbItems={[{ title: '首页' }, { title: '生产概览' }]}
       title={
         <Space>
           <span style={{ fontWeight: 600, color: '#1f1f1f' }}>{currentFactory}</span>
-          {/* Tag 改为更淡雅的样式 */}
-          <Tag color="cyan" bordered={false} style={{ color: COLORS.running }}>● 运行中</Tag>
+          <Tag color="cyan" bordered={false} style={{ color: COLORS.running }}>● 实时同步中</Tag>
         </Space>
       }
       searchPlaceholder="全局搜索生产要素..."
@@ -136,14 +126,14 @@ const Dashboard: React.FC = () => {
           loading={loading}
           style={{ color: '#888' }}
         >
-          刷新
+          刷新数据
         </Button>
       ]}
     >
       <div style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
         {loading ? (
           <div style={{ paddingTop: 100, textAlign: 'center' }}>
-            <Spin size="large" tip="加载生产数据..." />
+            <Spin size="large" tip="正在聚合全车间生产数据..." />
           </div>
         ) : (
           <>
@@ -160,7 +150,7 @@ const Dashboard: React.FC = () => {
               
               <ProCard colSpan={8} layout="center" bordered style={{ height: 110, borderRadius: 4, boxShadow: 'none' }}>
                 <Statistic 
-                  title={<span style={{fontSize: 13, color: '#888'}}>库存预警 (Warning)</span>}
+                  title={<span style={{fontSize: 13, color: '#888'}}>物料数目(Number)</span>}
                   value={data.materialWarningCount} 
                   valueStyle={{ 
                     fontSize: 28, fontFamily: 'Roboto, monospace', fontWeight: 600, 
@@ -181,58 +171,61 @@ const Dashboard: React.FC = () => {
             </ProCard>
 
             <Row gutter={[16, 16]}>
-              {/* === 左侧：设备状态 (布局修复 + 新配色) === */}
-              <Col span={16}>
-                <ProCard 
-                  title={<span style={{ fontWeight: 600 }}>设备运行状态</span>}
-                  bordered 
-                  headerBordered 
-                  style={{ height: 320, borderRadius: 4 }}
-                >
-                  {/* 使用 Row/Col 重新分配宽度，去掉 Divider 解决溢出 */}
-                  <Row align="middle" justify="space-around" style={{ height: '100%' }}>
-                    <Col span={9} style={{ display: 'flex', justifyContent: 'center' }}>
-                      <SimplePieChart 
-                        data={[
-                          { value: data.deviceRunning, color: COLORS.running, name: '运行中' },
-                          { value: data.deviceIdle, color: COLORS.idle, name: '闲置' },
-                          { value: data.deviceFault, color: COLORS.fault, name: '故障' },
-                        ]} 
-                      />
-                    </Col>
-                    
-                    {/* 右侧列表：给一点左边距，确保不和饼图打架 */}
-                    <Col span={14} style={{ paddingLeft: 10 }}>
-                      <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6, color: '#555' }}>
-                            <span><span style={{ color: COLORS.running, fontSize: 20, marginRight: 4 }}>•</span> 运行中 (Running)</span>
-                            <span style={{ fontWeight: 500 }}>{data.deviceRunning} 台</span>
-                          </div>
-                          {/* 进度条改细一点，更精致 */}
-                          <Progress percent={Math.round((data.deviceRunning / data.deviceTotal) * 100)} size="small" strokeColor={COLORS.running} trailColor="#f0f0f0" showInfo={false} strokeWidth={6} />
-                        </div>
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6, color: '#555' }}>
-                            <span><span style={{ color: COLORS.idle, fontSize: 20, marginRight: 4 }}>•</span> 闲置 (Idle)</span>
-                            <span style={{ fontWeight: 500 }}>{data.deviceIdle} 台</span>
-                          </div>
-                          <Progress percent={Math.round((data.deviceIdle / data.deviceTotal) * 100)} size="small" strokeColor={COLORS.idle} trailColor="#f0f0f0" showInfo={false} strokeWidth={6} />
-                        </div>
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6, color: '#555' }}>
-                            <span><span style={{ color: COLORS.fault, fontSize: 20, marginRight: 4 }}>•</span> 故障 (Fault)</span>
-                            <span style={{ fontWeight: 500 }}>{data.deviceFault} 台</span>
-                          </div>
-                          <Progress percent={Math.round((data.deviceFault / data.deviceTotal) * 100)} size="small" strokeColor={COLORS.fault} trailColor="#f0f0f0" showInfo={false} strokeWidth={6} />
-                        </div>
-                      </Space>
-                    </Col>
-                  </Row>
-                </ProCard>
-              </Col>
+{/* === 左侧：设备状态 === */}
+<Col span={16}>
+  <ProCard 
+    title={<span style={{ fontWeight: 600 }}>设备运行状态</span>}
+    bordered 
+    headerBordered 
+    style={{ height: 320, borderRadius: 4 }}
+  >
+    <Row align="middle" justify="space-around" style={{ height: '100%' }}>
+      <Col span={9} style={{ display: 'flex', justifyContent: 'center' }}>
+        <SimplePieChart 
+          data={[
+            { value: data.deviceRunning, color: COLORS.running, name: '运行中' },
+            { value: data.deviceIdle, color: COLORS.idle, name: '闲置' },
+            // 🌟 3. 修改环形图第三项数据
+            { value: data.deviceInstalling, color: COLORS.installing, name: '安装调试' }, 
+          ]} 
+        />
+      </Col>
+      
+      <Col span={14} style={{ paddingLeft: 10 }}>
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          {/* 运行中 */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6, color: '#555' }}>
+              <span><span style={{ color: COLORS.running, fontSize: 20, marginRight: 4 }}>•</span> 运行中 (Running)</span>
+              <span style={{ fontWeight: 500 }}>{data.deviceRunning} 台</span>
+            </div>
+            <Progress percent={safePercent(data.deviceRunning, data.deviceTotal)} size="small" strokeColor={COLORS.running} trailColor="#f0f0f0" showInfo={false} strokeWidth={6} />
+          </div>
+          {/* 闲置 */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6, color: '#555' }}>
+              <span><span style={{ color: COLORS.idle, fontSize: 20, marginRight: 4 }}>•</span> 闲置 (Idle)</span>
+              <span style={{ fontWeight: 500 }}>{data.deviceIdle} 台</span>
+            </div>
+            <Progress percent={safePercent(data.deviceIdle, data.deviceTotal)} size="small" strokeColor={COLORS.idle} trailColor="#f0f0f0" showInfo={false} strokeWidth={6} />
+          </div>
+          
+          {/* 🌟 4. 修改第三个进度条：文案、颜色和数据引用 */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6, color: '#555' }}>
+              <span><span style={{ color: COLORS.installing, fontSize: 20, marginRight: 4 }}>•</span> 安装调试 (Installing)</span>
+              <span style={{ fontWeight: 500 }}>{data.deviceInstalling} 台</span>
+            </div>
+            <Progress percent={safePercent(data.deviceInstalling, data.deviceTotal)} size="small" strokeColor={COLORS.installing} trailColor="#f0f0f0" showInfo={false} strokeWidth={6} />
+          </div>
 
-              {/* === 右侧：快捷操作 (高度匹配，更紧凑) === */}
+        </Space>
+      </Col>
+    </Row>
+  </ProCard>
+</Col>
+
+              {/* === 右侧：快捷操作 === */}
               <Col span={8}>
                 <ProCard 
                   title={<span style={{ fontWeight: 600 }}>快捷操作</span>}
@@ -249,7 +242,7 @@ const Dashboard: React.FC = () => {
                         style={{ 
                           cursor: 'pointer', 
                           padding: '12px 16px',
-                          background: COLORS.bgCard, // 使用淡背景
+                          background: COLORS.bgCard, 
                           border: '1px solid transparent',
                           borderRadius: 6,
                           display: 'flex',
@@ -269,7 +262,6 @@ const Dashboard: React.FC = () => {
                         }}
                       >
                         <Space size={12}>
-                          {/* 图标背景圆角 */}
                           <div style={{ 
                             width: 36, height: 36, borderRadius: 8, background: '#fff', 
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -287,7 +279,6 @@ const Dashboard: React.FC = () => {
                     ))}
                   </Space>
                   
-                  {/* 底部系统状态：简化为一个极简的文字提示 */}
                   <div style={{ 
                     textAlign: 'center', 
                     padding: '8px 0', 
@@ -296,9 +287,9 @@ const Dashboard: React.FC = () => {
                     fontSize: 12,
                     marginTop: 8
                   }}>
-                    <Space>
-                      <CheckCircleFilled /> 系统服务运行正常
-                    </Space>
+                    {/* <Space>
+                      <CheckCircleFilled /> 数据与各服务模块通信正常
+                    </Space> */}
                   </div>
                 </ProCard>
               </Col>

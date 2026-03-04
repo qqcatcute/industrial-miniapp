@@ -1,7 +1,8 @@
 // src/pages/Material/components/MaterialDrawer.tsx
-import React from 'react';
-import { Drawer, Tabs, Descriptions, Tag, Typography, Space, Badge } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Drawer, Tabs, Descriptions, Tag, Typography, Space, Badge, Table, Spin, Empty } from 'antd';
 import { Material } from '../typing';
+import { generateBOMFromRoutes } from '../service'; // 👈 引入聚合函数
 
 const { Title, Text } = Typography;
 
@@ -14,7 +15,44 @@ interface MaterialDrawerProps {
 }
 
 const MaterialDrawer: React.FC<MaterialDrawerProps> = ({ visible, material, activeTab, onTabChange, onClose }) => {
+  // BOM 状态管理
+  const [bomData, setBomData] = useState<any[]>([]);
+  const [bomLoading, setBomLoading] = useState(false);
+
+  // 当切换到 BOM Tab (key='2') 且物料存在时，触发聚合计算
+  useEffect(() => {
+    if (visible && material && activeTab === '2') {
+      setBomLoading(true);
+      // 使用物料族 ID 或具体物料 ID 去查（根据你们路线绑定的逻辑）
+      const targetId = material.masterId || material.materialId;
+      generateBOMFromRoutes(targetId).then(data => {
+        setBomData(data);
+        setBomLoading(false);
+      });
+    }
+  }, [visible, material, activeTab]);
+
   if (!material) return null;
+
+  // BOM 表格列定义
+  const bomColumns = [
+    { title: '物料编码', dataIndex: 'materialId', key: 'materialId', width: 160 },
+    { 
+      title: '物料名称', 
+      dataIndex: 'materialName', 
+      key: 'materialName',
+      render: (text: string) => <span style={{ fontWeight: 600 }}>{text}</span>
+    },
+    { 
+      title: '所需消耗总数', 
+      key: 'quantity', 
+      render: (_: any, record: any) => (
+        <span style={{ color: '#1677ff', fontFamily: 'monospace', fontSize: 14 }}>
+          {Number(record.materialQuantity).toFixed(4)} <span style={{ fontSize: 12, color: '#888' }}>{record.materialUnit}</span>
+        </span>
+      )
+    }
+  ];
 
   return (
     <Drawer title="物料全景档案" width={800} onClose={onClose} open={visible} styles={{ body: { padding: 0 } }}>
@@ -37,7 +75,6 @@ const MaterialDrawer: React.FC<MaterialDrawerProps> = ({ visible, material, acti
             label: '详细信息', 
             children: (
               <Descriptions column={2} style={{ marginTop: 16 }} bordered size="small">
-                {/* 💡 以下渲染的每一个字段，都是基于后端接口文档真实存在的字段 */}
                 <Descriptions.Item label="规格型号" span={2}>
                   <Text strong>{material.materialSpecificationModel || '--'}</Text>
                 </Descriptions.Item>
@@ -48,9 +85,6 @@ const MaterialDrawer: React.FC<MaterialDrawerProps> = ({ visible, material, acti
                 <Descriptions.Item label="供应商">
                   {material.materialSupplier || '--'}
                 </Descriptions.Item>
-                
-                {/* 💡 已经删除了刚才写死的“系统创建标识”假数据 */}
-
                 <Descriptions.Item label="物料技术描述" span={2}>
                   <div style={{ padding: '8px 12px', background: '#fafafa', borderRadius: 4, color: '#555', minHeight: 60 }}>
                     {material.materialDescription || '暂无填写的技术描述或备注信息。'}
@@ -60,11 +94,27 @@ const MaterialDrawer: React.FC<MaterialDrawerProps> = ({ visible, material, acti
             )
           },
           {
-            key: '2', label: 'BOM 结构',
+            key: '2', 
+            label: '单层级物料清单 (BOM)',
             children: (
-              <div style={{ marginTop: 16, textAlign: 'center', padding: '60px 0', color: '#999', border: '1px dashed #d9d9d9', borderRadius: 4 }}>
-                 {/* BOM目前后端确实没有接口，这里保留提示语 */}
-                 请等待后端提供 BOM / 结构化树状接口后开启编辑
+              <div style={{ marginTop: 16 }}>
+                <Spin spinning={bomLoading} tip="正在逆向推演工艺路线并计算所需物料...">
+                  {bomData.length > 0 ? (
+                    <Table 
+                      columns={bomColumns} 
+                      dataSource={bomData} 
+                      rowKey="materialId" 
+                      pagination={false} 
+                      size="small"
+                      bordered
+                    />
+                  ) : (
+                    <Empty 
+                      description={bomLoading ? '' : '当前物料暂无下属 BOM，或尚未为其配置关联的工艺路线及模板。'} 
+                      style={{ margin: '40px 0' }}
+                    />
+                  )}
+                </Spin>
               </div>
             )
           }
@@ -73,4 +123,5 @@ const MaterialDrawer: React.FC<MaterialDrawerProps> = ({ visible, material, acti
     </Drawer>
   );
 };
+
 export default MaterialDrawer;

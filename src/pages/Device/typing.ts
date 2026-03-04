@@ -7,6 +7,10 @@ export interface SparePart {
   sparePartSpecificationModel?: string;
   sparePartQuantity: number;
   sparePartUnit: string;
+  // 🚀 新增：丰富备件信息，对齐后端文档的潜在字段
+  sparePartPrice?: number;
+  sparePartLocation?: string;
+  sparePartSupplier?: string;
 }
 
 export interface Device {
