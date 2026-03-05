@@ -79,9 +79,9 @@ const Dashboard: React.FC = () => {
   
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardStats>({
-    deviceTotal: 0, deviceRunning: 0, deviceInstalling: 0, deviceIdle: 0, // 🌟 2. 初始状态同步修改
-    materialWarningCount: 0, routeTotal: 0
-  });
+  deviceTotal: 0, deviceRunning: 0, deviceInstalling: 0, deviceIdle: 0, 
+  materialTotal: 0, routeTotal: 0 // 改为 materialTotal
+});
 
   useEffect(() => {
     queryDashboardStats().then((res) => {
@@ -149,16 +149,16 @@ const Dashboard: React.FC = () => {
               </ProCard>
               
               <ProCard colSpan={8} layout="center" bordered style={{ height: 110, borderRadius: 4, boxShadow: 'none' }}>
-                <Statistic 
-                  title={<span style={{fontSize: 13, color: '#888'}}>物料数目(Number)</span>}
-                  value={data.materialWarningCount} 
-                  valueStyle={{ 
-                    fontSize: 28, fontFamily: 'Roboto, monospace', fontWeight: 600, 
-                    color: data.materialWarningCount > 0 ? COLORS.fault : '#1f1f1f' 
-                  }}
-                  prefix={<GoldOutlined style={{ color: data.materialWarningCount > 0 ? COLORS.fault : COLORS.running, fontSize: 20, background: data.materialWarningCount > 0 ? '#fff1f0' : '#e6fffb', padding: 8, borderRadius: '50%' }} />}
-                />
-              </ProCard>
+  <Statistic 
+    title={<span style={{fontSize: 13, color: '#888'}}>物料数目 (Total)</span>}
+    value={data.materialTotal} 
+    valueStyle={{ 
+      fontSize: 28, fontFamily: 'Roboto, monospace', fontWeight: 600, color: '#1f1f1f' 
+    }}
+    // 👇 主要修改这一行：将 color 改为 #ff7875，将 background 改为 #fff1f0
+    prefix={<GoldOutlined style={{ color: '#ff7875', fontSize: 20, background: '#fff1f0', padding: 8, borderRadius: '50%' }} />}
+  />
+</ProCard>
 
               <ProCard colSpan={8} layout="center" bordered style={{ height: 110, borderRadius: 4, boxShadow: 'none' }}>
                 <Statistic 

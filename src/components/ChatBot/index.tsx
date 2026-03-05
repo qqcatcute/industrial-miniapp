@@ -56,7 +56,7 @@ const ChatBot: React.FC = () => {
       
       // 触发预设问答逻辑：识别到 "设备" 或特定编号
       if (userMsg.includes('设备') || userMsg.includes('EQ-CNC-2026-001') || userMsg.includes('状态')) {
-        aiReply = '为您查到：规格型号为HCN-6800的设备卧式五轴加工中心当前状态为【运行中】，齐品牌为马扎克，位置为1号厂房-A区恒温车间。该设备用于精密行星减速器箱体及行星架的高精度镗铣加工，要求放置在22度恒温防震区域。';
+        aiReply = '为您查到：规格型号为HCN-6800的设备卧式五轴加工中心当前状态为【运行中】，品牌为马扎克，位置为1号厂房-A区恒温车间。用于精密行星减速器箱体、行星架的高精度加工，支持柔性制造系统联动。';
       }
 
       setMessages(prev => [...prev, { id: `msg-ai-${Date.now()}`, role: 'ai', text: aiReply }]);

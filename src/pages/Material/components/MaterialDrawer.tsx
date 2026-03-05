@@ -24,7 +24,7 @@ const MaterialDrawer: React.FC<MaterialDrawerProps> = ({ visible, material, acti
     if (visible && material && activeTab === '2') {
       setBomLoading(true);
       // 使用物料族 ID 或具体物料 ID 去查（根据你们路线绑定的逻辑）
-      const targetId = material.masterId || material.materialId;
+      const targetId = material.materialId;
       generateBOMFromRoutes(targetId).then(data => {
         setBomData(data);
         setBomLoading(false);

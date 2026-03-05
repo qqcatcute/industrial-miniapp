@@ -4,9 +4,9 @@ import request from '@/utils/request';
 export interface DashboardStats {
   deviceTotal: number;
   deviceRunning: number;
-  deviceInstalling: number; // 🌟 1. 将 deviceFault 改为 deviceInstalling
+  deviceInstalling: number; 
   deviceIdle: number;
-  materialWarningCount: number; 
+  materialTotal: number; // 🌟 1. 改为物料总数 (原来是 materialWarningCount)
   routeTotal: number; 
 }
 
@@ -22,42 +22,34 @@ export const queryDashboardStats = async (): Promise<DashboardStats> => {
     const materialList = materialRes.data || [];
     const routeList = routeRes.data || [];
 
-    // --- 1. 设备状态分布统计 ---
     let running = 0;
-    let installing = 0; // 🌟 2. 更改变量名
+    let installing = 0; 
     let idle = 0;
 
     deviceList.forEach((device: any) => {
       const status = device.deviceStatus;
       if (status === 'RUNNING' || status === '运行中') {
         running++;
-      } else if (status === 'INSTALLING' || status === '安装调试') { // 🌟 3. 更改统计口径
+      } else if (status === 'INSTALLING' || status === '安装调试') { 
         installing++;
       } else {
-        // PLANNED, IDLE, SCRAPPED 统一归类为闲置/其他
         idle++;
       }
     });
 
-    const warningCount = materialList.filter((m: any) => Number(m.materialQuantity) < 10).length;
-
     return {
       deviceTotal: deviceList.length,
       deviceRunning: running,
-      deviceInstalling: installing, // 🌟 4. 返回新字段
+      deviceInstalling: installing, 
       deviceIdle: idle,
-      materialWarningCount: warningCount,
+      materialTotal: materialList.length, // 🌟 2. 直接统计数组长度作为总数
       routeTotal: routeList.length,
     };
   } catch (error) {
-    console.error('❌ 获取 Dashboard 统计数据失败，触发降级兜底', error);
+    console.error('获取 Dashboard 统计数据失败', error);
     return {
-      deviceTotal: 0,
-      deviceRunning: 0,
-      deviceInstalling: 0, // 🌟 5. 兜底数据也同步修改
-      deviceIdle: 0,
-      materialWarningCount: 0,
-      routeTotal: 0,
+      deviceTotal: 0, deviceRunning: 0, deviceInstalling: 0, deviceIdle: 0,
+      materialTotal: 0, routeTotal: 0,
     };
   }
 };
