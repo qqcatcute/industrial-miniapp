@@ -3,6 +3,37 @@ import request from '@/utils/request';
 import { Material, MaterialLabel } from './typing';
 import { mockMaterialLabels, mockMaterials } from '@/mock/material.mock';
 
+// --- 🌟 新增：前端“暗度陈仓”解包辅助函数 ---
+// --- 🌟 必不可少的解包函数 ---
+// --- 🌟 增强版：双线解包函数 ---
+export const unpackMaterialData = (item: any) => {
+  let newItem = { ...item };
+
+  // 🌟 1. 解包【规格型号】：提取真实的双轨版本号 (列表和详情都能拿到！)
+  if (newItem.materialSpecificationModel && newItem.materialSpecificationModel.includes('@@@')) {
+    const specParts = newItem.materialSpecificationModel.split('@@@');
+    newItem.materialSpecificationModel = specParts[0]; // 还原干净的规格型号
+    newItem.materialVersion = specParts[1];            // 覆盖出真实的 A.2 / B.1 版本号
+  }
+
+  // 🌟 2. 解包【物料描述】：提取扩展属性和BOM (只有详情接口能拿到)
+  if (newItem.materialDescription && newItem.materialDescription.includes('@@@')) {
+    try {
+      const descParts = newItem.materialDescription.split('@@@');
+      const extData = JSON.parse(descParts[1]);
+      newItem = {
+        ...newItem,
+        materialDescription: descParts[0], 
+        partCategory: extData.partCategory, 
+        extendedInfo: extData.extendedInfo || {}, 
+        bomList: extData.bomList || []
+      };
+    } catch(e) {}
+  }
+  
+  return newItem;
+};
+
 // ==========================================
 // 🏷️ 1. 物料分类标签接口 (含扁平转树形逻辑)
 // ==========================================
@@ -93,9 +124,9 @@ export const getMaterials = async (params?: { keyword?: string; labelId?: string
         pageNum: params?.current || 1, 
         pageSize: params?.pageSize || 100
       });
-      // 同样经过折叠算法处理
-      const allVersions: Material[] = res.data || [];
-      return groupAndFoldMaterials(allVersions);
+      // 🌟 核心修复 1：用我们的解包函数处理搜索回来的每一条数据！
+      const unpackedList = (res.data || []).map((item: any) => unpackMaterialData(item));
+      return groupAndFoldMaterials(unpackedList);
     }
 
     // 👇 原有逻辑：如果没有 keyword，正常走 list 接口（加载分类树数据）
@@ -105,8 +136,9 @@ export const getMaterials = async (params?: { keyword?: string; labelId?: string
       labelId: validLabelId
     });
     
-    const allVersions: Material[] = res.data || [];
-    return groupAndFoldMaterials(allVersions);
+    // 🌟 核心修复 2：用我们的解包函数处理列表回来的每一条数据！
+    const unpackedList = (res.data || []).map((item: any) => unpackMaterialData(item));
+    return groupAndFoldMaterials(unpackedList);
   } catch (error) {
     return groupAndFoldMaterials(mockMaterials);
   }
@@ -120,7 +152,8 @@ const groupAndFoldMaterials = (flatList: Material[]): Material[] => {
   });
   const finalTree: Material[] = [];
   groupMap.forEach(group => {
-    group.sort((a, b) => b.materialVersion.localeCompare(a.materialVersion));
+    // 🌟 核心修复 3：开启数字混合排序，保证 B.2, B.3, B.10 的顺序绝对正确
+    group.sort((a, b) => b.materialVersion.localeCompare(a.materialVersion, undefined, { numeric: true }));
     const latestVersion = { ...group[0] };
     latestVersion.historyVersions = group.slice(1);
     finalTree.push(latestVersion);
@@ -188,10 +221,12 @@ export const deleteLatestVersion = async (masterId: string): Promise<boolean> =>
   }
 };
 
+// 找到最底部的 getMaterialDetail，替换为：
 export const getMaterialDetail = async (materialId: string): Promise<Material> => {
   try {
     const res = await request.get('/material/detail', { params: { materialId } });
-    return res.data;
+    // 🌟 核心修复 4：详情接口返回的数据，也必须要解包！
+    return unpackMaterialData(res.data);
   } catch (error) {
     const mockData = mockMaterials.find(m => m.materialId === materialId) || mockMaterials[0];
     return { ...mockData, materialDescription: mockData.materialDescription || '该物料暂无详细描述信息。（此为Mock降级数据）' };

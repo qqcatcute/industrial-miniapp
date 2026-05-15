@@ -3,6 +3,24 @@ import request from '@/utils/request';
 import { Device, DeviceLabel, SparePart } from './typing';
 import { mockDeviceList, mockDeviceDetail } from '@/mock/device.mock';
 
+// --- 🌟 核心新增：设备数据“解包”函数 ---
+export const unpackDeviceData = (item: any) => {
+  if (!item || !item.deviceDescription || !item.deviceDescription.includes('@@@')) {
+    return item;
+  }
+  try {
+    const parts = item.deviceDescription.split('@@@');
+    const extData = JSON.parse(parts[1]);
+    return {
+      ...item,
+      deviceDescription: parts[0], // 🌟 关键：只把 @@@ 前面的文字给前端显示
+      deviceCategory: extData.deviceCategory, // 释放隐藏的分类
+      extendedInfo: extData.extendedInfo || {}, // 释放隐藏的动态参数
+    };
+  } catch (e) {
+    return item;
+  }
+};
 // ==========================================
 // 🛡️ 前端兜底 Mock 数据池
 // ==========================================
@@ -23,14 +41,16 @@ const mockLabels: DeviceLabel[] = [
 
 export const getDevices = async (params: { labelId?: string; current?: number; pageSize?: number }) => {
   try {
-    // 🚀 核心修改：直接使用 request.post，Axios 会自动把第二个参数放进 Body
+    // 🚀 核心修改：直接使用 request.post
     const res = await request.post('/device/list', {
       pageNum: params.current || 1, 
       pageSize: params.pageSize || 10,
       labelId: params.labelId === 'ALL' ? undefined : params.labelId 
     });
     
-    return { data: res.data || [], total: res.data?.length || 0, success: true };
+    // 🌟 核心修复 1：拦截并解包列表数据！把 @@@ 后面的隐藏数据剥离，不让表格显示出来
+    const unpackedList = (res.data || []).map((item: any) => unpackDeviceData(item));
+    return { data: unpackedList, total: res.data?.length || 0, success: true };
   } catch (error) {
     console.warn('⚠️ 触发 [获取设备列表] 柔性降级');
     return { data: mockDeviceList.data as Device[], total: mockDeviceList.data.length, success: true };
@@ -40,7 +60,8 @@ export const getDevices = async (params: { labelId?: string; current?: number; p
 export const getDeviceDetail = async (deviceId: string): Promise<Device> => {
   try {
     const res = await request.get('/device/detail', { params: { deviceId } });
-    return res.data;
+    // 🌟 核心修复 2：拦截并解包详情数据！这样你的“编辑设备档案”抽屉就能瞬间认出“数控机床”并展示参数了
+    return unpackDeviceData(res.data);
   } catch (error) {
     console.warn(`⚠️ 触发 [获取设备详情] 柔性降级: ${deviceId}`);
     return { ...mockDeviceDetail.data } as Device;
@@ -93,7 +114,9 @@ export const queryDevices = async (params: { queryType: string; keyword: string;
       pageNum: params.pageNum || 1,
       pageSize: params.pageSize || 10
     });
-    return { data: res.data || [], total: res.data?.length || 0, success: true };
+    // 🌟 核心修复 3：拦截并解包搜索出来的结果！
+    const unpackedList = (res.data || []).map((item: any) => unpackDeviceData(item));
+    return { data: unpackedList, total: res.data?.length || 0, success: true };
   } catch (error) {
     console.warn('⚠️ 触发 [查询设备] 柔性降级');
     const kw = params.keyword.toLowerCase();

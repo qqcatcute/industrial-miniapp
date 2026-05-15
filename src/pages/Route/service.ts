@@ -20,7 +20,26 @@ let mockRoutes: Route[] = [
 
 // 模拟数据库：保存每条工艺路线的 画布节点 和 连线数据
 const mockRouteConfigs: Record<string, { nodes: Node[]; edges: Edge[] }> = {};
-
+// 🚀 在 service.ts 顶部新增通用解包函数
+const unpackRouteData = (data: any) => {
+  if (data && data.routeDescription && data.routeDescription.includes('@@@')) {
+    try {
+      const parts = data.routeDescription.split('@@@');
+      const secretExtension = JSON.parse(parts[1]);
+      return {
+        ...data,
+        routeDescription: parts[0], // 还原真实描述
+        operator: secretExtension.operator || '',
+        operationTime: secretExtension.operationTime || '',
+        equipments: secretExtension.equipments || '',
+        routeStatus: secretExtension.routeStatus || '启用' // 还原状态
+      };
+    } catch (e) {
+      console.warn('解析扩展字段失败', e);
+    }
+  }
+  return data;
+};
 // ==========================================
 // 🚀 1. 工艺路线基础 CRUD
 // ==========================================
@@ -63,7 +82,9 @@ export const saveRouteBaseInfo = async (routeData: any): Promise<boolean> => {
     const secretObj = {
       operator: routeData.operator || '',
       operationTime: routeData.operationTime || '',
-      equipments: routeData.equipments || ''
+      equipments: routeData.equipments || '',
+      // 🚀 修改点 3：将状态塞进秘密对象
+      routeStatus: routeData.routeStatus || '启用' 
     };
 
     // 2. 将真实描述和秘密对象通过 @@@ 拼接在一起
@@ -220,6 +241,8 @@ export const getRouteDetail = async (routeId: string) => {
         data.operator = secretExtension.operator;
         data.operationTime = secretExtension.operationTime;
         data.equipments = secretExtension.equipments;
+        // 🚀 修改点 4：解析并还原状态字段
+        data.routeStatus = secretExtension.routeStatus || '启用'; 
       } catch(e) {
         console.warn('解析扩展字段失败', e);
       }

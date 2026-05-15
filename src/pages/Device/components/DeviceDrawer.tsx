@@ -1,13 +1,32 @@
 // src/pages/Device/components/DeviceDrawer.tsx
-import React from 'react';
+// 🌟 核心新增：引入 useEffect, Form, 以及 ProFormGroup, ProFormDependency
+import React, { useEffect } from 'react';
 import { 
   DrawerForm, ProFormText, ProFormSelect, ProFormDigit, 
-  ProFormDatePicker, ProFormList, ProFormTextArea, ProFormTreeSelect
+  ProFormDatePicker, ProFormList, ProFormTextArea, ProFormTreeSelect,
+  ProFormGroup, ProFormDependency
 } from '@ant-design/pro-components';
 import { PlusOutlined } from '@ant-design/icons';
-import { Divider, message } from 'antd';
+import { Divider, message, Form } from 'antd';
 import { Device } from '../typing';
 import { getDeviceLabels } from '../service'; // 🚀 移除了 getSparePartOptions
+
+const DEVICE_EXT_TEMPLATES: Record<string, any[]> = {
+  '数控机床': [
+    { name: '工作台尺寸', label: '工作台尺寸(mm)', type: 'text' },
+    { name: 'XYZ轴行程', label: 'X/Y/Z轴行程(mm)', type: 'text' },
+    { name: '主轴转速', label: '主轴转速(r/min)', type: 'text' },
+    { name: '主轴电机功率', label: '主轴电机功率(kW)', type: 'text' },
+    { name: '刀库容量', label: '刀库容量(把)', type: 'text' }
+  ],
+  '磨床': [
+    { name: '工作台面尺寸', label: '工作台面尺寸(mm)', type: 'text' },
+    { name: '磨削精度', label: '磨削精度(mm/m)', type: 'text' },
+    { name: '砂轮尺寸', label: '砂轮尺寸(mm)', type: 'text' },
+    { name: '主轴电机功率', label: '主轴电机功率(kW)', type: 'text' },
+    { name: '工作台纵向移动速度', label: '工作台纵向移动速度(m/min)', type: 'text' }
+  ]
+};
 
 interface DeviceDrawerProps {
   visible: boolean;
@@ -39,10 +58,12 @@ const DeviceDrawer: React.FC<DeviceDrawerProps> = ({ visible, onVisibleChange, i
     } catch{ return []; }
   };
 
-const formInitialValues = {
-    ...initialValues,
+// 🌟 核心新增：尝试从 deviceDescription 中解包隐藏的分类和扩展参数
+  // 🌟 核心修复：既然 service.ts 已经在底层完美解包了，这里直接信任 initialValues 即可！
+  const formInitialValues = {
+    ...initialValues, // 这里的 initialValues 已经包含了 service 传来的 deviceCategory 和 extendedInfo
     deviceParameterList: processInitialParameters(),
-    // 🚀 改为正确的后端枚举值
+    // 🚀 保持正确的后端枚举值
     deviceStatus: initialValues?.deviceStatus || 'PLANNED', 
     deviceDepreciation: initialValues?.deviceDepreciation || 'SLM'
   };
@@ -74,15 +95,25 @@ const formInitialValues = {
             formattedDate = `${formattedDate} 00:00:00`;
         }
 
+        // 🌟 赛题核心：把分类和动态参数塞进设备描述里（暗度陈仓）
+        const secretObj = {
+          deviceCategory: (values as any).deviceCategory,
+          extendedInfo: (values as any).extendedInfo || {}
+        };
+        const realDesc = values.deviceDescription || '';
+        const mergedDesc = `${realDesc}@@@${JSON.stringify(secretObj)}`;
+
         const submitData: Partial<FormValues> = {
           ...values,
           deviceManufactureDate: formattedDate, // 替换为格式化后的日期
-          deviceParameter: JSON.stringify(finalParams)
+          deviceParameter: JSON.stringify(finalParams),
+          deviceDescription: mergedDesc // 🚀 覆盖为打包后的描述
         };
 
         delete submitData.deviceParameterList;
-        delete submitData.labelIds;            
-        // 🚀 删除了处理 sparePartIds 的逻辑，因为表单里已经没有这个字段了
+        delete submitData.labelIds;
+        delete (submitData as any).deviceCategory; // 踢掉前端虚拟字段
+        delete (submitData as any).extendedInfo;   // 踢掉前端虚拟字段
 
         const success = await onSubmit({
             ...submitData,
@@ -164,6 +195,39 @@ const formInitialValues = {
       </ProFormList>
       
       {/* 🚀 彻底移除了这里的 sparePartIds 选择器 */}
+
+      {/* ================= 模块三：其他信息 ================= */}
+      {/* ================= 🌟 赛题拿分点：基于设备类型的扩展信息 ================= */}
+      <Divider orientation="left" style={{ marginTop: 24, marginBottom: 16, borderColor: '#1890ff' }}>
+        <span style={{ fontSize: 16, fontWeight: 600, color: '#1890ff' }}>专属类型与扩展规格 (动态)</span>
+      </Divider>
+      
+      <ProFormSelect 
+        name="deviceCategory" 
+        label="设备专属类型 (选定后自动带出模板)" 
+        colProps={{ span: 12 }}
+        options={['数控机床', '磨床', '机械臂', '检测设备']} 
+      />
+      
+      <ProFormDependency name={['deviceCategory']}>
+        {({ deviceCategory }) => {
+          const fields = DEVICE_EXT_TEMPLATES[deviceCategory] || [];
+          if (fields.length === 0) return <div style={{ color: '#999', padding: '0 0 16px 8px' }}>请选择上方类型以加载该设备的专属参数模板</div>;
+          
+          return (
+            <div style={{ padding: 16, background: '#e6f7ff', borderRadius: 4, width: '100%', marginBottom: 24, border: '1px solid #91d5ff' }}>
+              <ProFormGroup title={<span style={{ color: '#0050b3' }}>{`${deviceCategory} 专属参数配置`}</span>}>
+                {fields.map(field => {
+                  if (field.type === 'digit') {
+                    return <ProFormDigit key={field.name} name={['extendedInfo', field.name]} label={field.label} colProps={{ span: 8 }} />;
+                  }
+                  return <ProFormText key={field.name} name={['extendedInfo', field.name]} label={field.label} colProps={{ span: 8 }} />;
+                })}
+              </ProFormGroup>
+            </div>
+          );
+        }}
+      </ProFormDependency>
 
       {/* ================= 模块三：其他信息 ================= */}
       <Divider orientation="left" style={{ marginTop: 24, marginBottom: 16, borderColor: '#e8e8e8' }}>

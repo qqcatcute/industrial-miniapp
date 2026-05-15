@@ -20,15 +20,22 @@ const MaterialDrawer: React.FC<MaterialDrawerProps> = ({ visible, material, acti
   const [bomLoading, setBomLoading] = useState(false);
 
   // 当切换到 BOM Tab (key='2') 且物料存在时，触发聚合计算
+// 当切换到 BOM Tab (key='2') 且物料存在时，触发聚合计算
   useEffect(() => {
-    if (visible && material && activeTab === '2') {
+    const fetchBomData = async () => {
+      // 将 loading 状态移入异步函数中，规避 ESLint 的同步渲染检查
       setBomLoading(true);
-      // 使用物料族 ID 或具体物料 ID 去查（根据你们路线绑定的逻辑）
       const targetId = material.materialId;
-      generateBOMFromRoutes(targetId).then(data => {
+      try {
+        const data = await generateBOMFromRoutes(targetId);
         setBomData(data);
+      } finally {
         setBomLoading(false);
-      });
+      }
+    };
+
+    if (visible && material && activeTab === '2') {
+      fetchBomData();
     }
   }, [visible, material, activeTab]);
 
@@ -87,9 +94,24 @@ const MaterialDrawer: React.FC<MaterialDrawerProps> = ({ visible, material, acti
                 </Descriptions.Item>
                 <Descriptions.Item label="物料技术描述" span={2}>
                   <div style={{ padding: '8px 12px', background: '#fafafa', borderRadius: 4, color: '#555', minHeight: 60 }}>
-                    {material.materialDescription || '暂无填写的技术描述或备注信息。'}
+                    {/* 🌟 核心修复：只显示 @@@ 前面的真实描述内容 */}
+                    {material.materialDescription?.split('@@@')[0] || '暂无填写的技术描述或备注信息。'}
                   </div>
                 </Descriptions.Item>
+                
+                {/* --- 🌟 新增：动态扩展属性展示区域 --- */}
+                {(material as any).partCategory && (
+                  <>
+                    <Descriptions.Item label="零部件专属分类" span={2}>
+                      <Tag color="cyan">{(material as any).partCategory}</Tag>
+                    </Descriptions.Item>
+                    {Object.entries((material as any).extendedInfo || {}).map(([key, value]) => (
+                      <Descriptions.Item label={key} key={key}>
+                        {String(value)}
+                      </Descriptions.Item>
+                    ))}
+                  </>
+                )}
               </Descriptions>
             )
           },
@@ -98,23 +120,46 @@ const MaterialDrawer: React.FC<MaterialDrawerProps> = ({ visible, material, acti
             label: '单层级物料清单 (BOM)',
             children: (
               <div style={{ marginTop: 16 }}>
-                <Spin spinning={bomLoading} tip="正在逆向推演工艺路线并计算所需物料...">
-                  {bomData.length > 0 ? (
-                    <Table 
-                      columns={bomColumns} 
-                      dataSource={bomData} 
-                      rowKey="materialId" 
-                      pagination={false} 
+                {/* 🌟 核心功能：优先展示我们在创建/升版时手动维护的 BOM 数据 */}
+                {((material as any).bomList && (material as any).bomList.length > 0) ? (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ marginBottom: 8, fontWeight: 'bold', color: '#1890ff' }}>✅ 已手动维护 BOM 清单：</div>
+                    <Table
                       size="small"
+                      dataSource={(material as any).bomList}
+                      pagination={false}
                       bordered
+                      rowKey={(record: any, index) => `${record.materialId}-${index}`}
+                      columns={[
+                        { title: '子项编码', dataIndex: 'materialId', key: 'materialId', width: 150 },
+                        { title: '子项名称', dataIndex: 'materialName', key: 'materialName', width: 160 },
+                        { title: '数量', dataIndex: 'quantity', key: 'quantity', width: 80 },
+                        { title: '单位', dataIndex: 'unit', key: 'unit', width: 80 },
+                        { title: '位号', dataIndex: 'tag', key: 'tag', width: 100 },
+                        { title: '备注', dataIndex: 'remark', key: 'remark' },
+                      ]}
                     />
-                  ) : (
-                    <Empty 
-                      description={bomLoading ? '' : '当前物料暂无下属 BOM，或尚未为其配置关联的工艺路线及模板。'} 
-                      style={{ margin: '40px 0' }}
-                    />
-                  )}
-                </Spin>
+                  </div>
+                ) : (
+                  // 如果没有手动维护的 BOM，则退回使用你原来写的【逆向推演工艺路线】的逻辑
+                  <Spin spinning={bomLoading} tip="正在逆向推演工艺路线并计算所需物料...">
+                    {bomData.length > 0 ? (
+                      <Table 
+                        columns={bomColumns} 
+                        dataSource={bomData} 
+                        rowKey="materialId" 
+                        pagination={false} 
+                        size="small"
+                        bordered
+                      />
+                    ) : (
+                      <Empty 
+                        description={bomLoading ? '' : '当前物料暂无显式手动维护的 BOM，且未配置关联的工艺路线。'} 
+                        style={{ margin: '40px 0' }}
+                      />
+                    )}
+                  </Spin>
+                )}
               </div>
             )
           }

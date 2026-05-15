@@ -114,15 +114,29 @@ const MaterialManagement: React.FC = () => {
             keyword={keyword}
             refreshKey={refreshKey} // 💡 完美传入
             onViewDetail={handleViewDetail} 
-            onEdit={(record) => {
-              setDrawerMode('edit');
-              setCurrentRecord(record);
-              setFormVisible(true);
+            onEdit={async (record) => {
+              setLoadingDetail(true); // 借用你写好的全局 Loading
+              try {
+                // 🌟 核心修复：拉取完整详情，获取被列表接口隐藏的 description 字段
+                const fullDetail = await getMaterialDetail(record.materialId);
+                setDrawerMode('edit');
+                setCurrentRecord({ ...fullDetail, materialId: record.materialId, masterId: record.masterId });
+                setFormVisible(true);
+              } finally {
+                setLoadingDetail(false);
+              }
             }}
-            onUpgrade={(record) => {
-              setDrawerMode('upgrade');
-              setCurrentRecord(record);
-              setFormVisible(true);
+            onUpgrade={async (record) => {
+              setLoadingDetail(true);
+              try {
+                // 🌟 升版同样需要拉取完整详情！
+                const fullDetail = await getMaterialDetail(record.materialId);
+                setDrawerMode('upgrade');
+                setCurrentRecord({ ...fullDetail, materialId: record.materialId, masterId: record.masterId });
+                setFormVisible(true);
+              } finally {
+                setLoadingDetail(false);
+              }
             }}
             rowSelection={{
               selectedRowKeys,

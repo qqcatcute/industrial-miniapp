@@ -94,8 +94,14 @@ const RouteDrawer: React.FC<RouteDrawerProps> = ({ open, onClose, onSuccess, cur
             />
           </Form.Item>
           
+          {/* 🚀 修改点 1：将版本和状态放在一行，或者另起一行 */}
           <Form.Item name="version" label="工艺版本" style={{ flex: 1 }} rules={[{ required: true }]}>
             <Input placeholder="1.0" />
+          </Form.Item>
+
+          {/* 🚀 修改点 2：新增工艺状态字段 */}
+          <Form.Item name="routeStatus" label="工艺状态" style={{ flex: 1 }} initialValue="启用">
+            <Select options={[{ label: '启用', value: '启用' }, { label: '停用', value: '停用' }]} />
           </Form.Item>
         </div>
 
