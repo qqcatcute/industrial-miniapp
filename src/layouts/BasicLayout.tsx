@@ -79,12 +79,10 @@ const BasicLayout: React.FC = () => {
           siderWidth={180} // 保持瘦身状态
 
           // 👇 去除臃肿的阴影，加入硬朗的 1px 细线边框切割
-          headerStyle={{
-            boxShadow: 'none',
-            borderBottom: '1px solid #e8e8e8' 
-          }}
-          siderStyle={{
-            borderRight: '1px solid #e8e8e8' 
+          style={{
+            ['--ant-pro-layout-header-box-shadow' as any]: 'none',
+            ['--ant-pro-layout-header-border-bottom' as any]: '1px solid #e8e8e8',
+            ['--ant-pro-layout-sider-border-inline-end' as any]: '1px solid #e8e8e8',
           }}
 
           // 👇 彻底重写 Token：告别传统后台大黑块

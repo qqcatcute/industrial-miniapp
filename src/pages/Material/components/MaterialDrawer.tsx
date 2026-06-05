@@ -23,6 +23,7 @@ const MaterialDrawer: React.FC<MaterialDrawerProps> = ({ visible, material, acti
 // 当切换到 BOM Tab (key='2') 且物料存在时，触发聚合计算
   useEffect(() => {
     const fetchBomData = async () => {
+      if (!material) return;
       // 将 loading 状态移入异步函数中，规避 ESLint 的同步渲染检查
       setBomLoading(true);
       const targetId = material.materialId;

@@ -5,6 +5,12 @@ import { Form, message, Divider } from 'antd';
 import { getMaterialLabels, addMaterial, updateMaterial, reviseAndUpdateMaterial, bindMaterialLabel, unbindMaterialLabel, unpackMaterialData } from '../service';
 import { MaterialLabel, Material } from '../typing';
 
+type MaterialFormExtraFields = {
+  partCategory?: string;
+  extendedInfo?: Record<string, unknown>;
+  bomList?: any[];
+};
+
 // 🌟 新增：赛题要求的硬编码字典
 const PART_EXT_TEMPLATES: Record<string, any[]> = {
   '伺服电机': [
@@ -42,7 +48,7 @@ const MaterialFormDrawer: React.FC<MaterialFormDrawerProps> = ({ visible, onVisi
 useEffect(() => {
     if (visible) {
       if ((mode === 'edit' || mode === 'upgrade') && record) {
-        let unpackedRecord = { ...record };
+        let unpackedRecord: Material & MaterialFormExtraFields = { ...record };
         
         // 🌟 终极安全解析方案：拿到带有 @@@ 的描述后，直接在组件内解析并填充表单！
         if (record.materialDescription && record.materialDescription.includes('@@@')) {
@@ -125,20 +131,20 @@ useEffect(() => {
         // 2. 提交主干数据
         if (mode === 'edit' && currentMaterialId) {
           success = await updateMaterial(currentMaterialId, submitData);
-        } else if (mode === 'upgrade') {
-          // 🌟 核心修复：严谨区分 xDM-F 的大版本修订与小版本迭代！
-          if (upgradeType === 'major') {
-             // 1. 大版本修订换代 (A -> B)：必须调用 reviseAndUpdate 触发 xDM-F 引擎的修订检出机制
-             success = await reviseAndUpdateMaterial({ 
-               ...submitData, 
-               masterId: record?.masterId,
-               materialId: currentMaterialId 
-             }); 
-          } else {
-             // 2. 小版本迭代 (A.1 -> A.2)：调用普通的 update 接口，xDM-F 引擎会自动处理小版本的迭代与履历保存
-             success = await updateMaterial(currentMaterialId, submitData);
-          }
-        } else {
+         } else if (mode === 'upgrade') {
+           // 🌟 核心修复：严谨区分 xDM-F 的大版本修订与小版本迭代！
+           if (upgradeType === 'major') {
+              // 1. 大版本修订换代 (A -> B)：必须调用 reviseAndUpdate 触发 xDM-F 引擎的修订检出机制
+              success = await reviseAndUpdateMaterial({ 
+                ...submitData, 
+                masterId: record?.masterId,
+                materialId: currentMaterialId 
+              }); 
+           } else if (currentMaterialId) {
+              // 2. 小版本迭代 (A.1 -> A.2)：调用普通的 update 接口，xDM-F 引擎会自动处理小版本的迭代与履历保存
+              success = await updateMaterial(currentMaterialId, submitData);
+           }
+         } else {
           const newId = await addMaterial(submitData);
           if (newId) { currentMaterialId = newId; success = true; }
         }
