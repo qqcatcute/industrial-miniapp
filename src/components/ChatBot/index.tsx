@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Button, Input, Space, Spin, Typography } from 'antd';
+import { Button, Input, Space, Typography } from 'antd';
 import { 
   RobotOutlined, 
   CloseOutlined, 
@@ -7,6 +7,8 @@ import {
   UserOutlined,
   MessageOutlined
 } from '@ant-design/icons';
+import request from '../../utils/request';
+import ReactMarkdown from 'react-markdown';
 
 const { Text } = Typography;
 
@@ -21,7 +23,6 @@ const ChatBot: React.FC = () => {
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   
-  // 预设一条 AI 的开场白
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'msg-0',
@@ -31,194 +32,288 @@ const ChatBot: React.FC = () => {
   ]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // 🌟 新增：用于监听“点击外部关闭”的容器引用
+  const chatWindowRef = useRef<HTMLDivElement>(null);
 
-  // 每次消息更新时，自动滚动到最底部
+  // 1. 自动滚动到最底部
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, isOpen]);
+  }, [messages, isOpen, isTyping]);
 
-  const handleSend = () => {
+  // 2. 🌟 新增：点击弹窗外部区域 或 按 Esc 键关闭窗口
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      // 如果点击的区域不在 chatWindowRef 内部，则关闭
+      if (chatWindowRef.current && !chatWindowRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+
+    // 只有在窗口打开时才监听，优化性能
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleEsc);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [isOpen]);
+
+  const handleSend = async () => {
     if (!inputValue.trim()) return;
 
     const userMsg = inputValue.trim();
     const newMsgId = `msg-${Date.now()}`;
     
-    // 1. 添加用户消息
     setMessages(prev => [...prev, { id: newMsgId, role: 'user', text: userMsg }]);
     setInputValue('');
     setIsTyping(true);
 
-    // 2. 模拟网络请求与 AI 思考时间
-    setTimeout(() => {
-      let aiReply = '作为一个智能生产助手，我还在持续学习中。您可以尝试询问我关于特定设备的状态或维修记录。';
-      
-      // 触发预设问答逻辑：识别到 "设备" 或特定编号
-      if (userMsg.includes('设备') || userMsg.includes('EQ-CNC-2026-001') || userMsg.includes('状态')) {
-        aiReply = '为您查到：规格型号为HCN-6800的设备卧式五轴加工中心当前状态为【运行中】，品牌为马扎克，位置为1号厂房-A区恒温车间。用于精密行星减速器箱体、行星架的高精度加工，支持柔性制造系统联动。';
-      }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res: any = await request.post('/mcp', 
+        { prompt: userMsg }, 
+        { timeout: 60000 }
+      );
 
+      const aiReply = res.data || '未获取到有效的回复内容。';
       setMessages(prev => [...prev, { id: `msg-ai-${Date.now()}`, role: 'ai', text: aiReply }]);
+    } catch (error) {
+      console.error('AI 接口通信异常:', error);
+      setMessages(prev => [...prev, {
+        id: `msg-ai-err-${Date.now()}`,
+        role: 'ai',
+        text: '智汇助手暂时无法连接，可能是由于网络抖动或模型思考超时，请稍后再试。'
+      }]);
+    } finally {
       setIsTyping(false);
-    }, 1500); // 延迟 1.5 秒显得真实一点
+    }
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: 32,
-      right: 32,
-      zIndex: 9999, // 确保浮在最上层
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'flex-end',
-    }}>
-      {/* 展开后的聊天窗口 */}
-      {isOpen && (
-        <div style={{
-          width: 360,
-          height: 520,
-          backgroundColor: '#fff',
-          border: '1px solid #d9d9d9',
-          borderRadius: 4,
-          boxShadow: '0 12px 24px rgba(0,0,0,0.1)',
-          marginBottom: 16,
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-        }}>
-          {/* 头部标题区 */}
-          <div style={{
-            height: 48,
-            backgroundColor: '#13c2c2', // 契合智汇工软的主题色
-            padding: '0 16px',
+    <>
+      {/* 🌟 新增：定义高级的 AI 思考跳动小圆点动画 */}
+      <style>
+        {`
+          .typing-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 20px;
+            gap: 4px;
+          }
+          .typing-dot {
+            width: 6px;
+            height: 6px;
+            background-color: #13c2c2;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+          }
+          .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+          .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+          @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); opacity: 0.4; }
+            40% { transform: scale(1); opacity: 1; }
+          }
+        `}
+      </style>
+
+      <div style={{
+        position: 'fixed',
+        bottom: 32,
+        right: 32,
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+      }}>
+        
+        {isOpen && (
+          // 🌟 绑定 ref，用于判定点击区域
+          <div ref={chatWindowRef} style={{
+            width: 380, // 稍微加宽一点，让文本排版更透气
+            height: 560,
+            backgroundColor: '#fff',
+            borderRadius: 12, // 更大的圆角，更现代
+            boxShadow: '0 12px 48px rgba(0,0,0,0.12), 0 4px 16px rgba(0,0,0,0.08)', // 更深邃高级的弥散阴影
+            marginBottom: 20,
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            color: '#fff'
+            flexDirection: 'column',
+            overflow: 'hidden',
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+            transition: 'all 0.3s cubic-bezier(0.645, 0.045, 0.355, 1)' // 加入展开时的平滑过渡感
           }}>
-            <Space>
-              <RobotOutlined style={{ fontSize: 18 }} />
-              <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: 1 }}>智汇智能助手</span>
-            </Space>
-            <Button 
-              type="text" 
-              icon={<CloseOutlined style={{ color: '#fff' }} />} 
-              size="small"
-              onClick={() => setIsOpen(false)}
-            />
-          </div>
-
-          {/* 聊天消息区 */}
-          <div style={{ flex: 1, padding: '16px', overflowY: 'auto', backgroundColor: '#F5F7FA' }}>
-            {messages.map((msg) => {
-              const isAi = msg.role === 'ai';
-              return (
-                <div key={msg.id} style={{ 
-                  display: 'flex', 
-                  flexDirection: isAi ? 'row' : 'row-reverse',
-                  marginBottom: 16,
-                  alignItems: 'flex-start'
-                }}>
-                  {/* 头像 */}
-                  <div style={{ 
-                    width: 32, 
-                    height: 32, 
-                    borderRadius: 4, 
-                    backgroundColor: isAi ? '#fff' : '#1677FF',
-                    border: isAi ? '1px solid #e8e8e8' : 'none',
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    margin: isAi ? '0 12px 0 0' : '0 0 0 12px',
-                    color: isAi ? '#13c2c2' : '#fff',
-                    flexShrink: 0
-                  }}>
-                    {isAi ? <RobotOutlined /> : <UserOutlined />}
-                  </div>
-
-                  {/* 气泡框 */}
-                  <div style={{
-                    maxWidth: '75%',
-                    padding: '10px 14px',
-                    backgroundColor: isAi ? '#fff' : '#e6f4ff',
-                    border: isAi ? '1px solid #e8e8e8' : '1px solid #91caff',
-                    borderRadius: 4,
-                    color: '#333',
-                    fontSize: 13,
-                    lineHeight: 1.5,
-                    wordBreak: 'break-word',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
-                  }}>
-                    {msg.text}
-                  </div>
+            {/* 头部区 */}
+            <div style={{
+              height: 56,
+              backgroundColor: '#13c2c2',
+              padding: '0 20px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              color: '#fff'
+            }}>
+              <Space size="middle">
+                <RobotOutlined style={{ fontSize: 22 }} />
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: 1 }}>智汇智能助手</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)' }}>已连接大模型</div>
                 </div>
-              );
-            })}
-            
-            {/* 加载动画：AI 正在输入 */}
-            {isTyping && (
-              <div style={{ display: 'flex', marginBottom: 16, alignItems: 'flex-start' }}>
-                <div style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: '#fff', border: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 12px 0 0', color: '#13c2c2' }}>
-                  <RobotOutlined />
-                </div>
-                <div style={{ padding: '10px 14px', backgroundColor: '#fff', border: '1px solid #e8e8e8', borderRadius: 4 }}>
-                   <Spin size="small" />
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* 底部输入区 */}
-          <div style={{ padding: '12px', backgroundColor: '#fff', borderTop: '1px solid #f0f0f0' }}>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Input
-                placeholder="询问设备状态、参数或工艺..."
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onPressEnter={handleSend}
-                disabled={isTyping}
-                style={{ borderRadius: 2 }}
-              />
+              </Space>
               <Button 
-                type="primary" 
-                icon={<SendOutlined />} 
-                onClick={handleSend}
-                loading={isTyping}
-                style={{ borderRadius: 2, backgroundColor: '#13c2c2', boxShadow: 'none' }}
+                type="text" 
+                icon={<CloseOutlined style={{ color: '#fff', fontSize: 16 }} />} 
+                onClick={() => setIsOpen(false)}
+                style={{ right: -8 }} // 视觉修正居中
               />
             </div>
-            <div style={{ textAlign: 'center', marginTop: 8 }}>
-               <Text type="secondary" style={{ fontSize: 11 }}>AI 生成内容仅供参考，请核实后操作</Text>
+
+            {/* 消息区 */}
+            <div style={{ flex: 1, padding: '20px 16px', overflowY: 'auto', backgroundColor: '#F8FAFC' }}>
+              {messages.map((msg) => {
+                const isAi = msg.role === 'ai';
+                return (
+                  <div key={msg.id} style={{ 
+                    display: 'flex', 
+                    flexDirection: isAi ? 'row' : 'row-reverse',
+                    marginBottom: 20,
+                    alignItems: 'flex-start'
+                  }}>
+                    {/* 头像 */}
+                    <div style={{ 
+                      width: 36, 
+                      height: 36, 
+                      borderRadius: 18, // 圆形头像显得更柔和亲切
+                      backgroundColor: isAi ? '#fff' : '#1677FF',
+                      border: isAi ? '1px solid #e8e8e8' : 'none',
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      margin: isAi ? '0 12px 0 0' : '0 0 0 12px',
+                      color: isAi ? '#13c2c2' : '#fff',
+                      flexShrink: 0,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+                    }}>
+                      {isAi ? <RobotOutlined style={{ fontSize: 18 }}/> : <UserOutlined style={{ fontSize: 16 }}/>}
+                    </div>
+
+                    {/* 气泡 */}
+                    <div style={{
+                      maxWidth: '78%',
+                      padding: '12px 16px',
+                      backgroundColor: isAi ? '#fff' : '#e6f4ff',
+                      border: isAi ? '1px solid #f0f0f0' : '1px solid #91caff',
+                      // 不同角色使用不同的单侧直角视觉语言
+                      borderRadius: isAi ? '2px 16px 16px 16px' : '16px 2px 16px 16px',
+                      color: '#333',
+                      fontSize: 14,
+                      lineHeight: 1.6,
+                      wordBreak: 'break-word',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+                    }}>
+                      {isAi ? (
+                        <ReactMarkdown 
+                          components={{
+                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                            p: ({node, ...props}) => <p style={{ margin: 0 }} {...props} />,
+                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                            ul: ({node, ...props}) => <ul style={{ paddingLeft: 20, margin: '4px 0' }} {...props} />,
+                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                            ol: ({node, ...props}) => <ol style={{ paddingLeft: 20, margin: '4px 0' }} {...props} />,
+                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                            li: ({node, ...props}) => <li style={{ marginBottom: 2 }} {...props} />
+                          }}
+                        >
+                          {msg.text}
+                        </ReactMarkdown>
+                      ) : (
+                        msg.text
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              
+              {/* 🌟 替换：使用高级的波浪圆点动画 */}
+              {isTyping && (
+                <div style={{ display: 'flex', marginBottom: 16, alignItems: 'flex-start' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#fff', border: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 12px 0 0', color: '#13c2c2', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                    <RobotOutlined style={{ fontSize: 18 }}/>
+                  </div>
+                  <div style={{ padding: '14px 18px', backgroundColor: '#fff', border: '1px solid #f0f0f0', borderRadius: '2px 16px 16px 16px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                     <div className="typing-indicator">
+                       <span className="typing-dot"></span>
+                       <span className="typing-dot"></span>
+                       <span className="typing-dot"></span>
+                     </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* 底部输入区 */}
+            <div style={{ padding: '16px', backgroundColor: '#fff', borderTop: '1px solid #f0f0f0' }}>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <Input
+                  placeholder="询问设备状态、参数或工艺..."
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onPressEnter={handleSend}
+                  disabled={isTyping}
+                  variant="filled" // 使用更现代的填充态输入框
+                  style={{ borderRadius: 20, paddingLeft: 16 }}
+                />
+                <Button 
+                  type="primary" 
+                  shape="circle" // 改为纯圆形发送按钮
+                  icon={<SendOutlined style={{ marginLeft: -2 }}/>} // 图标微调居中
+                  onClick={handleSend}
+                  loading={isTyping}
+                  size="large"
+                  style={{ backgroundColor: '#13c2c2', border: 'none', flexShrink: 0 }}
+                />
+              </div>
+              <div style={{ textAlign: 'center', marginTop: 12 }}>
+                 <Text type="secondary" style={{ fontSize: 12 }}>AI 生成内容仅供参考，请核实后操作</Text>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* 悬浮圆形按钮 */}
-      {!isOpen && (
-        <Button
-          type="primary"
-          shape="circle"
-          size="large"
-          icon={<MessageOutlined style={{ fontSize: 20 }} />}
-          onClick={() => setIsOpen(true)}
-          style={{
-            width: 56,
-            height: 56,
-            backgroundColor: '#13c2c2', // 科技青主色调
-            border: 'none',
-            boxShadow: '0 8px 20px rgba(19, 194, 194, 0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        />
-      )}
-    </div>
+        {/* 悬浮按钮 */}
+        {!isOpen && (
+          <Button
+            type="primary"
+            shape="circle"
+            size="large"
+            icon={<MessageOutlined style={{ fontSize: 22 }} />}
+            onClick={() => setIsOpen(true)}
+            style={{
+              width: 60,
+              height: 60,
+              backgroundColor: '#13c2c2',
+              border: 'none',
+              boxShadow: '0 8px 24px rgba(19, 194, 194, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'transform 0.2s cubic-bezier(0.645, 0.045, 0.355, 1)'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          />
+        )}
+      </div>
+    </>
   );
 };
 
